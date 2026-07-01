@@ -1,0 +1,50 @@
+{
+    "name": "nt-userscripts",
+    "version": "1.0.0",
+    "description": "Collection of userscripts for various purposes",
+    "keywords": [
+        "improvements",
+        "nt",
+        "ui",
+        "userscripts"
+    ],
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/augmente000/nt-userscripts.git"
+    },
+    "type": "module",
+    "scripts": {
+        "build": "node --strip-types src/build/build.ts",
+        "build:watch": "node --strip-types src/build/build.ts --watch",
+        "type-check": "tsgo",
+        "format": "oxfmt",
+        "format:check": "oxfmt --check",
+        "lint": "pnpm run oxlint && pnpm run eslint",
+        "lint-fix": "pnpm run eslint -- --fix",
+        "oxlint": "oxlint --type-aware",
+        "eslint": "eslint .",
+        "generate-readme": "node --strip-types ./tools/generate-readme.ts > README.md"
+    },
+    "devDependencies": {
+        "@babel/core": "^8.0.1",
+        "@babel/preset-env": "^8.0.1",
+        "@babel/preset-typescript": "^8.0.1",
+        "@rollup/plugin-alias": "^6.0.0",
+        "@rollup/plugin-babel": "^7.1.0",
+        "@rollup/plugin-commonjs": "^29.0.3",
+        "@rollup/plugin-node-resolve": "^16.0.1",
+        "@types/greasemonkey": "^4.0.7",
+        "@types/node": "^24.8.1",
+        "@typescript/native-preview": "7.0.0-dev.20260618.1",
+        "oxfmt": "^0.55.0",
+        "oxlint": "^1.70.0",
+        "oxlint-tsgolint": "^0.23.0",
+        "rollup": "^4.62.0",
+        "zod": "^4.4.3"
+    },
+    "engines": {
+        "node": "24.x"
+    },
+    "packageManager": "pnpm@10.33.4"
+}

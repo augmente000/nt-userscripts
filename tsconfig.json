@@ -1,0 +1,38 @@
+{
+    "compilerOptions": {
+        "target": "es2025",
+        "module": "esnext",
+        "moduleResolution": "bundler",
+        "lib": ["ES2025", "DOM"],
+        "allowJs": true,
+        "checkJs": false,
+        "declaration": false,
+        "noEmit": true,
+        "allowImportingTsExtensions": true,
+        "outDir": "./dist",
+        "noImplicitAny": true,
+        "strictNullChecks": true,
+        "strictFunctionTypes": true,
+        "noImplicitReturns": true,
+        "noFallthroughCasesInSwitch": true,
+        "noUncheckedIndexedAccess": true,
+        "exactOptionalPropertyTypes": true,
+        "noImplicitOverride": true,
+        "noPropertyAccessFromIndexSignature": true,
+        "allowUnusedLabels": false,
+        "allowUnreachableCode": false,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "resolveJsonModule": true,
+        "isolatedModules": true,
+        "verbatimModuleSyntax": true,
+        "rootDir": ".",
+        "paths": {
+            "~/*": ["./src/*"]
+        },
+        "types": ["node"]
+    },
+    "include": ["src/**/*", "oxfmt.config.ts", "oxlint.config.ts"],
+    "typeRoots": ["node_modules/@types", "src/types"],
+    "exclude": ["node_modules", "dist"]
+}

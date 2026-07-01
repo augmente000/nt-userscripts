@@ -1,0 +1,23 @@
+{
+    "name": "Search Bandcamp releases on trackers",
+    "description": "Add a button on Bandcamp's album pages to search the album artist + album name on trackers",
+    "version": "2026.06.30.2",
+    "author": "987982598734",
+    "namespace": "https://update.greasyfork.org/scripts/584978",
+    "downloadURL": "https://update.greasyfork.org/scripts/584978/Search%20Bandcamp%20releases%20on%20trackers.user.js",
+    "updateURL": "https://update.greasyfork.org/scripts/584978/Search%20Bandcamp%20releases%20on%20trackers.user.js",
+    "match": [
+        "https://*.bandcamp.com/",
+        "https://*.bandcamp.com/music",
+        "https://*.bandcamp.com/album/*",
+        "https://*.bandcamp.com/track/*",
+        "https://*/music",
+        "https://*/album/*",
+        "https://*/track/*"
+    ],
+    "grant": [
+        "unsafeWindow"
+    ],
+    "runAt": "document-end",
+    "icon": "https://www.google.com/s2/favicons?sz=64&domain=bandcamp.com"
+}
