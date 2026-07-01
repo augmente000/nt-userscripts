@@ -51,6 +51,11 @@ jobs:
       - name: Build userscripts
         run: pnpm build
 
+      - name: Stage build output
+        run: |
+          mkdir -p /tmp/deploy
+          cp dist/*.user.js /tmp/deploy/
+
       - name: Checkout deploy branch
         run: |
           git fetch origin "${DEPLOY_BRANCH}:${DEPLOY_BRANCH}" || true
@@ -63,16 +68,23 @@ jobs:
 
       - name: Copy built files to deploy branch
         run: |
-          find . -name "*.user.js" -not -path "./node_modules/*" -not -path "./.git/*" -not -path "./dist/*" -delete
-          cp -r dist/* .
-          rm -rf dist
+          # Remove leftover master-branch files (node_modules survives branch checkout).
+          git clean -fdx
+          find . -name "*.user.js" -not -path "./.git/*" -delete
+          cp /tmp/deploy/*.user.js .
+          printf '%s\n' \
+            '# Only published userscripts belong on this branch.' \
+            '*' \
+            '!.gitignore' \
+            '!*.user.js' \
+            > .gitignore
 
       - name: Commit and push to deploy branch
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
 
-          git add -A
+          git add .gitignore *.user.js
 
           if git diff --staged --quiet; then
             echo "No changes to deploy"
