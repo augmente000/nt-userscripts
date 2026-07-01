@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Search Bandcamp releases on trackers
 // @description  Add a button on Bandcamp's album pages to search the album artist + album name on trackers
-// @version      2026.06.30.2
+// @version      2026.06.30.3
 // @author       987982598734
 // @namespace    https://update.greasyfork.org/scripts/584978
 // @downloadURL  https://update.greasyfork.org/scripts/584978/Search%20Bandcamp%20releases%20on%20trackers.user.js
