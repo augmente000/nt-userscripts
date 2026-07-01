@@ -16,6 +16,7 @@
     "type": "module",
     "scripts": {
         "build": "node --strip-types src/build/build.ts",
+        "bump-versions": "node --strip-types src/build/bump-versions-if-changed.ts",
         "build:watch": "node --strip-types src/build/build.ts --watch",
         "type-check": "tsgo",
         "format": "oxfmt",

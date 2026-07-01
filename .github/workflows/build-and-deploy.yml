@@ -1,13 +1,3 @@
-# Builds userscripts and publishes them to the `dist` branch.
-# A GitHub push webhook (configured in repo Settings → Webhooks) notifies
-# Greasy Fork, which pulls updated scripts from their sync URLs.
-#
-# One-time Greasy Fork setup:
-#   https://greasyfork.org/en/users/webhook-info
-#
-# Per-script sync URL (Admin tab on Greasy Fork), e.g.:
-#   https://raw.githubusercontent.com/augmente000/nt-userscripts/dist/<name>.user.js
-
 name: Build and Deploy
 
 on:
@@ -20,15 +10,13 @@ permissions:
 
 env:
   DEPLOY_BRANCH: dist
-  GITHUB_REPO: augmente000/nt-userscripts
 
 jobs:
   build-and-deploy:
-    name: Build userscripts and deploy to Greasy Fork
+    if: ${{ !contains(github.event.head_commit.message || '', '[skip ci]') }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout master branch
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -36,27 +24,41 @@ jobs:
         with:
           run_install: false
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - uses: actions/setup-node@v6
         with:
           node-version-file: 'package.json'
           cache: 'pnpm'
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile
 
-      - name: Run type checking
-        run: pnpm type-check
+      - run: pnpm type-check
 
-      - name: Build userscripts
+      - run: pnpm build
+
+      - name: Bump versions for changed scripts
+        id: bump
+        run: node --strip-types src/build/bump-versions-if-changed.ts
+
+      - name: Rebuild after version bumps
+        if: steps.bump.outputs.changed == 'true'
         run: pnpm build
+
+      - name: Commit version bumps to master
+        if: steps.bump.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/userscripts/*/meta.json
+          git commit -m "chore: bump userscript versions [skip ci]"
+          git push origin master
 
       - name: Stage build output
         run: |
           mkdir -p /tmp/deploy
           cp dist/*.user.js /tmp/deploy/
 
-      - name: Checkout deploy branch
+      - name: Publish to deploy branch
+        id: deploy
         run: |
           git fetch origin "${DEPLOY_BRANCH}:${DEPLOY_BRANCH}" || true
           if git show-ref --verify --quiet "refs/heads/${DEPLOY_BRANCH}"; then
@@ -66,59 +68,31 @@ jobs:
             git rm -rf . 2>/dev/null || true
           fi
 
-      - name: Copy built files to deploy branch
-        run: |
-          # Remove leftover master-branch files (node_modules survives branch checkout).
           git clean -fdx
           find . -name "*.user.js" -not -path "./.git/*" -delete
           cp /tmp/deploy/*.user.js .
-          printf '%s\n' \
-            '# Only published userscripts belong on this branch.' \
-            '*' \
-            '!.gitignore' \
-            '!*.user.js' \
-            > .gitignore
+          printf '%s\n' '*' '!.gitignore' '!*.user.js' > .gitignore
 
-      - name: Commit and push to deploy branch
-        run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .gitignore *.user.js
 
           if git diff --staged --quiet; then
-            echo "No changes to deploy"
+            echo "deployed=false" >> "$GITHUB_OUTPUT"
           else
             git commit --no-verify -m "Deploy userscripts from master $(git rev-parse --short master)"
             git push origin "${DEPLOY_BRANCH}"
+            echo "deployed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Create summary
+      - name: Summary
+        if: steps.deploy.outputs.deployed == 'true'
         run: |
           {
-            echo "## Greasy Fork deployment"
-            echo ""
-            echo "Built from master commit: \`$(git rev-parse master)\`"
-            echo ""
-            echo "### Deployed scripts"
+            echo "### Deployed from \`$(git rev-parse --short master)\`"
             for file in *.user.js; do
               [ -f "$file" ] || continue
-              echo "- [\`$file\`](https://raw.githubusercontent.com/${GITHUB_REPO}/${DEPLOY_BRANCH}/$file)"
+              version=$(grep -m1 '^// @version' "$file" | sed 's/^\/\/ @version[[:space:]]*//')
+              echo "- \`${file}\` — ${version}"
             done
-            echo ""
-            echo "### Greasy Fork sync URLs"
-            echo "Set these on each script's **Admin** tab (Sync by URL):"
-            for file in *.user.js; do
-              [ -f "$file" ] || continue
-              echo "- \`https://raw.githubusercontent.com/${GITHUB_REPO}/${DEPLOY_BRANCH}/$file\`"
-            done
-            echo ""
-            echo "### GitHub webhook (one-time)"
-            echo "In **Settings → Webhooks → Add webhook**:"
-            echo "1. Payload URL: your URL from [Greasy Fork webhook setup](https://greasyfork.org/en/users/webhook-info)"
-            echo "2. Content type: \`application/json\`"
-            echo "3. Secret: generate on the Greasy Fork webhook page"
-            echo "4. Events: **Just the push event** (optionally limit to the \`${DEPLOY_BRANCH}\` branch)"
-            echo ""
-            echo "Greasy Fork only updates scripts whose \`.user.js\` files were **modified** in the push."
           } >> "$GITHUB_STEP_SUMMARY"
