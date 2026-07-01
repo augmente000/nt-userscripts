@@ -1,0 +1,4 @@
+# Only published userscripts belong on this branch.
+*
+!.gitignore
+!*.user.js
