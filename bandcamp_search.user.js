@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Search Bandcamp releases on trackers
 // @description  Add a button on Bandcamp's album pages to search the album artist + album name on trackers
-// @version      2026.07.01.1
+// @version      2026.07.01.2
 // @author       987982598734
 // @namespace    https://update.greasyfork.org/scripts/584978
 // @downloadURL  https://update.greasyfork.org/scripts/584978/Search%20Bandcamp%20releases%20on%20trackers.user.js
@@ -372,16 +372,21 @@
 
     var CONTAINER_ID = 'bc_tracker_search';
     function insertButton(release) {
-      var anchor = document.querySelector('div#customHeaderWrapper');
+      // don't insert on non-release pages
+      var anchor = document.querySelector('div.trackView');
       if (!anchor) {
         return;
       }
+
+      // if the our UI already exists, return early
       if (document.getElementById(CONTAINER_ID)) {
         return;
       }
+
+      // Prepare our UI element
       var wrapper = document.createElement('div');
       wrapper.id = CONTAINER_ID;
-      wrapper.style.margin = '6px 0';
+      wrapper.style.marginBlock = '24px';
       var header = document.createElement('div');
       header.textContent = 'Search';
       Object.assign(header.style, {
@@ -391,7 +396,9 @@
       });
       wrapper.appendChild(header);
       wrapper.appendChild(buildSearchGroups(release));
-      anchor.insertAdjacentElement('afterend', wrapper);
+
+      // Insert it
+      anchor.insertAdjacentElement('beforebegin', wrapper);
     }
 
     function init() {
