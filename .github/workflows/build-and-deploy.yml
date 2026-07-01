@@ -1,3 +1,13 @@
+# Builds userscripts and publishes them to the `dist` branch.
+# A GitHub push webhook (configured in repo Settings → Webhooks) notifies
+# Greasy Fork, which pulls updated scripts from their sync URLs.
+#
+# One-time Greasy Fork setup:
+#   https://greasyfork.org/en/users/webhook-info
+#
+# Per-script sync URL (Admin tab on Greasy Fork), e.g.:
+#   https://raw.githubusercontent.com/augmente000/nt-userscripts/dist/<name>.user.js
+
 name: Build and Deploy
 
 on:
@@ -5,9 +15,16 @@ on:
     branches: [master]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
+env:
+  DEPLOY_BRANCH: dist
+  GITHUB_REPO: augmente000/nt-userscripts
+
 jobs:
   build-and-deploy:
-    name: 'Build userscripts and deploy to dist branch'
+    name: Build userscripts and deploy to Greasy Fork
     runs-on: ubuntu-latest
     steps:
       - name: Checkout master branch
@@ -34,44 +51,62 @@ jobs:
       - name: Build userscripts
         run: pnpm build
 
-      - name: Checkout dist branch
+      - name: Checkout deploy branch
         run: |
-          git fetch origin dist:dist
-          git checkout dist
+          git fetch origin "${DEPLOY_BRANCH}:${DEPLOY_BRANCH}" || true
+          if git show-ref --verify --quiet "refs/heads/${DEPLOY_BRANCH}"; then
+            git checkout "${DEPLOY_BRANCH}"
+          else
+            git checkout --orphan "${DEPLOY_BRANCH}"
+            git rm -rf . 2>/dev/null || true
+          fi
 
-      - name: Copy built files to dist branch
+      - name: Copy built files to deploy branch
         run: |
-          # Remove old built files
           find . -name "*.user.js" -not -path "./node_modules/*" -not -path "./.git/*" -not -path "./dist/*" -delete
-
-          # Copy new built files
           cp -r dist/* .
-
-          # Remove the dist directory from the dist branch
           rm -rf dist
 
-      - name: Commit and push changes
+      - name: Commit and push to deploy branch
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
 
-          # Stage all changes (including new untracked files)
           git add -A
 
-          # Check if there is anything to commit
           if git diff --staged --quiet; then
-            echo "No changes to commit"
+            echo "No changes to deploy"
           else
-            git commit --no-verify -m "Build userscripts from master branch $(git rev-parse --short HEAD)"
-            git push origin dist
+            git commit --no-verify -m "Deploy userscripts from master $(git rev-parse --short master)"
+            git push origin "${DEPLOY_BRANCH}"
           fi
 
       - name: Create summary
         run: |
-          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
-          echo "Built userscripts from commit: \`$(git rev-parse HEAD)\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Built Files:" >> $GITHUB_STEP_SUMMARY
-          find . -name "*.user.js" -not -path "./node_modules/*" -not -path "./.git/*" | while read file; do
-            echo "- \`$file\`" >> $GITHUB_STEP_SUMMARY
-          done
+          {
+            echo "## Greasy Fork deployment"
+            echo ""
+            echo "Built from master commit: \`$(git rev-parse master)\`"
+            echo ""
+            echo "### Deployed scripts"
+            for file in *.user.js; do
+              [ -f "$file" ] || continue
+              echo "- [\`$file\`](https://raw.githubusercontent.com/${GITHUB_REPO}/${DEPLOY_BRANCH}/$file)"
+            done
+            echo ""
+            echo "### Greasy Fork sync URLs"
+            echo "Set these on each script's **Admin** tab (Sync by URL):"
+            for file in *.user.js; do
+              [ -f "$file" ] || continue
+              echo "- \`https://raw.githubusercontent.com/${GITHUB_REPO}/${DEPLOY_BRANCH}/$file\`"
+            done
+            echo ""
+            echo "### GitHub webhook (one-time)"
+            echo "In **Settings → Webhooks → Add webhook**:"
+            echo "1. Payload URL: your URL from [Greasy Fork webhook setup](https://greasyfork.org/en/users/webhook-info)"
+            echo "2. Content type: \`application/json\`"
+            echo "3. Secret: generate on the Greasy Fork webhook page"
+            echo "4. Events: **Just the push event** (optionally limit to the \`${DEPLOY_BRANCH}\` branch)"
+            echo ""
+            echo "Greasy Fork only updates scripts whose \`.user.js\` files were **modified** in the push."
+          } >> "$GITHUB_STEP_SUMMARY"
