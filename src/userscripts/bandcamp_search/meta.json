@@ -6,15 +6,7 @@
     "namespace": "https://update.greasyfork.org/scripts/584978",
     "downloadURL": "https://update.greasyfork.org/scripts/584978/Search%20Bandcamp%20releases%20on%20trackers.user.js",
     "updateURL": "https://update.greasyfork.org/scripts/584978/Search%20Bandcamp%20releases%20on%20trackers.user.js",
-    "match": [
-        "https://*.bandcamp.com/",
-        "https://*.bandcamp.com/music",
-        "https://*.bandcamp.com/album/*",
-        "https://*.bandcamp.com/track/*",
-        "https://*/music",
-        "https://*/album/*",
-        "https://*/track/*"
-    ],
+    "match": ["https://*.bandcamp.com/album/*", "https://*.bandcamp.com/track/*", "https://*/album/*", "https://*/track/*"],
     "grant": ["unsafeWindow"],
     "runAt": "document-end",
     "icon": "https://www.google.com/s2/favicons?sz=64&domain=bandcamp.com"
