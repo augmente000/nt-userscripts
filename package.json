@@ -21,10 +21,8 @@
         "type-check": "tsgo",
         "format": "oxfmt",
         "format:check": "oxfmt --check",
-        "lint": "pnpm run oxlint && pnpm run eslint",
-        "lint-fix": "pnpm run eslint -- --fix",
+        "lint": "pnpm run oxlint",
         "oxlint": "oxlint --type-aware",
-        "eslint": "eslint .",
         "generate-readme": "node --strip-types ./tools/generate-readme.ts > README.md"
     },
     "devDependencies": {
