@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Getapic UI Enhancements
 // @description  Add UI enhancements to getapic.me session list pages
-// @version      2026.07.03.2
+// @version      2026.07.03.3
 // @author       987982598734
 // @namespace    https://update.greasyfork.org/scripts/585345
 // @downloadURL  https://update.greasyfork.org/scripts/585345/getapic_ui_enhancements.user.js
@@ -249,6 +249,7 @@
 
   var SESSION_ROW_ID_PATTERN = /^set-(\d+)$/;
   var ALL_PREVIEWS_LABEL = 'Все HTML превью';
+  var SINGLE_IMAGE_HTML_LABEL = 'HTML картинка в тексте:';
   function extractSessionsFromTable(table) {
     var sessions = [];
     var _iterator = _createForOfIteratorHelper(table.querySelectorAll('tbody tr[id^="set-"]')),
@@ -301,14 +302,46 @@
     }
     return null;
   }
+  function findSingleImageHtmlInputs(doc) {
+    var values = [];
+    var _iterator3 = _createForOfIteratorHelper(doc.querySelectorAll('li')),
+      _step3;
+    try {
+      for (_iterator3.s(); !(_step3 = _iterator3.n()).done;) {
+        var _label$textContent2;
+        var li = _step3.value;
+        var label = li.querySelector('span');
+        if (!(label !== null && label !== void 0 && (_label$textContent2 = label.textContent) !== null && _label$textContent2 !== void 0 && _label$textContent2.includes(SINGLE_IMAGE_HTML_LABEL))) {
+          continue;
+        }
+        var input = li.querySelector('input.form-control');
+        var value = input === null || input === void 0 ? void 0 : input.value.trim();
+        if (value) {
+          values.push(value);
+        }
+      }
+    } catch (err) {
+      _iterator3.e(err);
+    } finally {
+      _iterator3.f();
+    }
+    return values;
+  }
   function extractPreviewHtmlFromPage(html) {
-    var _textarea$textContent;
     var doc = new DOMParser().parseFromString(html, 'text/html');
     var textarea = findAllPreviewsTextarea(doc);
-    if (!textarea) {
-      return '';
+    if (textarea) {
+      var _textarea$textContent;
+      var content = textarea.value.trim() || ((_textarea$textContent = textarea.textContent) === null || _textarea$textContent === void 0 ? void 0 : _textarea$textContent.trim()) || '';
+      if (content) {
+        return content;
+      }
     }
-    return textarea.value.trim() || ((_textarea$textContent = textarea.textContent) === null || _textarea$textContent === void 0 ? void 0 : _textarea$textContent.trim()) || '';
+    var singleImageHtmlValues = findSingleImageHtmlInputs(doc);
+    if (singleImageHtmlValues.length > 0) {
+      return singleImageHtmlValues.join(' ');
+    }
+    return '';
   }
 
   var STORAGE_PREFIX = 'nt-getapic-previews:';
