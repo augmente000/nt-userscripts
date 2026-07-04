@@ -1,7 +1,7 @@
 {
     "name": "Getapic UI Enhancements",
     "description": "Add UI enhancements to getapic.me session list pages",
-    "version": "2026.07.04.1",
+    "version": "2026.07.04.2",
     "author": "987982598734",
     "namespace": "https://update.greasyfork.org/scripts/585345",
     "downloadURL": "https://update.greasyfork.org/scripts/585345/getapic_ui_enhancements.user.js",
