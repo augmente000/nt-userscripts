@@ -12,6 +12,7 @@
         "https://getapic.me/v?*"
     ],
     "grant": [
+        "GM_openInTab",
         "unsafeWindow"
     ],
     "runAt": "document-end",

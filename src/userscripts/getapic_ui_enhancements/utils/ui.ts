@@ -1,6 +1,13 @@
+import type { SessionRow } from './types.ts';
+
 const PREVIEW_CELL_CLASS = 'nt-getapic-preview-cell';
 const PREVIEW_CONTAINER_CLASS = 'nt-getapic-previews';
 const MARKER_ATTR = 'data-nt-getapic-previews';
+
+const OPEN_ALL_MARKER_ATTR = 'data-nt-getapic-open-all';
+const JUMBOTRON_SELECTOR = '.jumbotron.medium-height.align-left';
+const ANON_BUTTON_SELECTOR = 'a.btn.btn-xs.btn-primary';
+const OPEN_ALL_BUTTON_LABEL = 'Открыть все сессии';
 
 export function ensurePreviewColumn(table: HTMLTableElement): void {
     if (table.querySelector(`.${PREVIEW_CELL_CLASS}`)) {
@@ -115,4 +122,45 @@ export function isRowProcessed(row: HTMLTableRowElement): boolean {
 
 export function markRowProcessed(row: HTMLTableRowElement): void {
     row.setAttribute(MARKER_ATTR, '1');
+}
+
+function openSessionInBackgroundTab(url: string): void {
+    GM_openInTab(url, { active: false });
+}
+
+export function ensureOpenAllSessionsButton(sessions: SessionRow[]): void {
+    const jumbotron = document.querySelector<HTMLElement>(JUMBOTRON_SELECTOR);
+    if (!jumbotron || jumbotron.querySelector(`[${OPEN_ALL_MARKER_ATTR}]`)) {
+        return;
+    }
+
+    const flexColumn = jumbotron.querySelector('.flex.flex-column');
+    if (!flexColumn) {
+        return;
+    }
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn btn-xs btn-primary';
+    button.textContent = OPEN_ALL_BUTTON_LABEL;
+    button.setAttribute(OPEN_ALL_MARKER_ATTR, '1');
+    button.title = `Открыть ${sessions.length} сессий в фоновых вкладках`;
+    button.disabled = sessions.length === 0;
+    button.style.marginLeft = '6px';
+
+    button.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        for (const session of sessions) {
+            openSessionInBackgroundTab(session.url);
+        }
+    });
+
+    const anonButton = jumbotron.querySelector<HTMLAnchorElement>(ANON_BUTTON_SELECTOR);
+    if (anonButton) {
+        anonButton.insertAdjacentElement('afterend', button);
+    } else {
+        flexColumn.insertAdjacentElement('beforebegin', button);
+    }
 }
