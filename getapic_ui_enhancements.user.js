@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Getapic UI Enhancements
 // @description  Add UI enhancements to getapic.me session list pages
-// @version      2026.07.03.3
+// @version      2026.07.04.1
 // @author       987982598734
 // @namespace    https://update.greasyfork.org/scripts/585345
 // @downloadURL  https://update.greasyfork.org/scripts/585345/getapic_ui_enhancements.user.js
@@ -327,6 +327,31 @@
     }
     return values;
   }
+  function findAnonStoreImageSrcs(doc) {
+    var srcs = [];
+    var _iterator4 = _createForOfIteratorHelper(doc.querySelectorAll('img[src^="/get/store/"]')),
+      _step4;
+    try {
+      for (_iterator4.s(); !(_step4 = _iterator4.n()).done;) {
+        var _img$getAttribute;
+        var img = _step4.value;
+        var src = (_img$getAttribute = img.getAttribute('src')) === null || _img$getAttribute === void 0 ? void 0 : _img$getAttribute.trim();
+        if (src) {
+          srcs.push(src);
+        }
+      }
+    } catch (err) {
+      _iterator4.e(err);
+    } finally {
+      _iterator4.f();
+    }
+    return srcs;
+  }
+  function buildPreviewHtmlFromImageSrcs(srcs) {
+    return srcs.map(function (src) {
+      return "<img src=\"".concat(src, "\" border=\"0\">");
+    }).join(' ');
+  }
   function extractPreviewHtmlFromPage(html) {
     var doc = new DOMParser().parseFromString(html, 'text/html');
     var textarea = findAllPreviewsTextarea(doc);
@@ -340,6 +365,10 @@
     var singleImageHtmlValues = findSingleImageHtmlInputs(doc);
     if (singleImageHtmlValues.length > 0) {
       return singleImageHtmlValues.join(' ');
+    }
+    var anonStoreImageSrcs = findAnonStoreImageSrcs(doc);
+    if (anonStoreImageSrcs.length > 0) {
+      return buildPreviewHtmlFromImageSrcs(anonStoreImageSrcs);
     }
     return '';
   }
