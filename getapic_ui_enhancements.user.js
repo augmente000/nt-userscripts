@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Getapic UI Enhancements
 // @description  Add UI enhancements to getapic.me session list pages
-// @version      2026.07.04.1
+// @version      2026.07.04.2
 // @author       987982598734
 // @namespace    https://update.greasyfork.org/scripts/585345
 // @downloadURL  https://update.greasyfork.org/scripts/585345/getapic_ui_enhancements.user.js
@@ -9,6 +9,7 @@
 // @match        https://getapic.me/v
 // @match        https://getapic.me/v/*
 // @match        https://getapic.me/v?*
+// @grant        GM_openInTab
 // @grant        unsafeWindow
 // @run-at       document-end
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=getapic.me
@@ -454,6 +455,10 @@
   var PREVIEW_CELL_CLASS = 'nt-getapic-preview-cell';
   var PREVIEW_CONTAINER_CLASS = 'nt-getapic-previews';
   var MARKER_ATTR = 'data-nt-getapic-previews';
+  var OPEN_ALL_MARKER_ATTR = 'data-nt-getapic-open-all';
+  var JUMBOTRON_SELECTOR = '.jumbotron.medium-height.align-left';
+  var ANON_BUTTON_SELECTOR = 'a.btn.btn-xs.btn-primary';
+  var OPEN_ALL_BUTTON_LABEL = 'Открыть все сессии';
   function ensurePreviewColumn(table) {
     if (table.querySelector(".".concat(PREVIEW_CELL_CLASS))) {
       return;
@@ -562,6 +567,51 @@
   }
   function markRowProcessed(row) {
     row.setAttribute(MARKER_ATTR, '1');
+  }
+  function openSessionInBackgroundTab(url) {
+    GM_openInTab(url, {
+      active: false
+    });
+  }
+  function ensureOpenAllSessionsButton(sessions) {
+    var jumbotron = document.querySelector(JUMBOTRON_SELECTOR);
+    if (!jumbotron || jumbotron.querySelector("[".concat(OPEN_ALL_MARKER_ATTR, "]"))) {
+      return;
+    }
+    var flexColumn = jumbotron.querySelector('.flex.flex-column');
+    if (!flexColumn) {
+      return;
+    }
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn btn-xs btn-primary';
+    button.textContent = OPEN_ALL_BUTTON_LABEL;
+    button.setAttribute(OPEN_ALL_MARKER_ATTR, '1');
+    button.title = "\u041E\u0442\u043A\u0440\u044B\u0442\u044C ".concat(sessions.length, " \u0441\u0435\u0441\u0441\u0438\u0439 \u0432 \u0444\u043E\u043D\u043E\u0432\u044B\u0445 \u0432\u043A\u043B\u0430\u0434\u043A\u0430\u0445");
+    button.disabled = sessions.length === 0;
+    button.style.marginLeft = '6px';
+    button.addEventListener('click', function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      var _iterator2 = _createForOfIteratorHelper(sessions),
+        _step2;
+      try {
+        for (_iterator2.s(); !(_step2 = _iterator2.n()).done;) {
+          var session = _step2.value;
+          openSessionInBackgroundTab(session.url);
+        }
+      } catch (err) {
+        _iterator2.e(err);
+      } finally {
+        _iterator2.f();
+      }
+    });
+    var anonButton = jumbotron.querySelector(ANON_BUTTON_SELECTOR);
+    if (anonButton) {
+      anonButton.insertAdjacentElement('afterend', button);
+    } else {
+      flexColumn.insertAdjacentElement('beforebegin', button);
+    }
   }
 
   var FETCH_INTERVAL_MS = 1000;
@@ -684,8 +734,10 @@
       return;
     }
     ensurePreviewColumn(table);
+    var sessions = extractSessionsFromTable(table);
+    ensureOpenAllSessionsButton(sessions);
     var queue = new PreviewFetchQueue();
-    var _iterator = _createForOfIteratorHelper(extractSessionsFromTable(table)),
+    var _iterator = _createForOfIteratorHelper(sessions),
       _step;
     try {
       for (_iterator.s(); !(_step = _iterator.n()).done;) {
