@@ -63,6 +63,23 @@ function findSingleImageHtmlInputs(doc: Document): string[] {
     return values;
 }
 
+function findAnonStoreImageSrcs(doc: Document): string[] {
+    const srcs: string[] = [];
+
+    for (const img of doc.querySelectorAll<HTMLImageElement>('img[src^="/get/store/"]')) {
+        const src = img.getAttribute('src')?.trim();
+        if (src) {
+            srcs.push(src);
+        }
+    }
+
+    return srcs;
+}
+
+function buildPreviewHtmlFromImageSrcs(srcs: string[]): string {
+    return srcs.map(src => `<img src="${src}" border="0">`).join(' ');
+}
+
 export function extractPreviewHtmlFromPage(html: string): string {
     const doc = new DOMParser().parseFromString(html, 'text/html');
     const textarea = findAllPreviewsTextarea(doc);
@@ -76,6 +93,11 @@ export function extractPreviewHtmlFromPage(html: string): string {
     const singleImageHtmlValues = findSingleImageHtmlInputs(doc);
     if (singleImageHtmlValues.length > 0) {
         return singleImageHtmlValues.join(' ');
+    }
+
+    const anonStoreImageSrcs = findAnonStoreImageSrcs(doc);
+    if (anonStoreImageSrcs.length > 0) {
+        return buildPreviewHtmlFromImageSrcs(anonStoreImageSrcs);
     }
 
     return '';
