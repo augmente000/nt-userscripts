@@ -37,7 +37,7 @@ jobs:
 
       - name: Bump versions for changed scripts
         id: bump
-        run: node --strip-types src/build/bump-versions-if-changed.ts
+        run: pnpm run bump-versions
 
       - name: Rebuild after version bumps
         if: steps.bump.outputs.changed == 'true'
