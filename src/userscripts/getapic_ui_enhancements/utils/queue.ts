@@ -20,6 +20,12 @@ export class PreviewFetchQueue {
         this.enqueue(session);
     }
 
+    refreshAll(sessions: SessionRow[]): void {
+        for (const session of sessions) {
+            this.refresh(session);
+        }
+    }
+
     private async process(): Promise<void> {
         if (this.processing) {
             return;
@@ -43,13 +49,9 @@ export class PreviewFetchQueue {
         try {
             const previewHtml = await fetchSessionPreviews(session.url);
             setCachedPreviews(session.sessionId, previewHtml);
-            renderPreviews(session.row, previewHtml, () => {
-                this.refresh(session);
-            });
+            renderPreviews(session.row, previewHtml);
         } catch {
-            renderErrorState(session.row, () => {
-                this.refresh(session);
-            });
+            renderErrorState(session.row);
         }
     }
 }
@@ -57,9 +59,7 @@ export class PreviewFetchQueue {
 export function loadCachedOrQueue(session: SessionRow, queue: PreviewFetchQueue): void {
     const cached = getCachedPreviews(session.sessionId);
     if (cached !== null) {
-        renderPreviews(session.row, cached, () => {
-            queue.refresh(session);
-        });
+        renderPreviews(session.row, cached);
         return;
     }
 
