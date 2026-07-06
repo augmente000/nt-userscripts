@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Search Bandcamp releases on trackers
 // @description  Add a button on Bandcamp's album pages to search the album artist + album name on trackers
-// @version      2026.07.01.2
+// @version      2026.07.06.1
 // @author       987982598734
 // @namespace    https://update.greasyfork.org/scripts/584978
 // @downloadURL  https://update.greasyfork.org/scripts/584978/Search%20Bandcamp%20releases%20on%20trackers.user.js
@@ -26,12 +26,11 @@
       return unsafeWindow;
     }
     function getReleaseData() {
-      var _ref, _tralbum$artist, _mobile$byArtist, _ref2, _tralbum$current$titl, _tralbum$current;
-      var pageWindow = getBandcampWindow();
-      var tralbum = pageWindow.TralbumData;
-      var mobile = pageWindow.TralbumJSONLD;
-      var artist = (_ref = (_tralbum$artist = tralbum === null || tralbum === void 0 ? void 0 : tralbum.artist) !== null && _tralbum$artist !== void 0 ? _tralbum$artist : mobile === null || mobile === void 0 || (_mobile$byArtist = mobile.byArtist) === null || _mobile$byArtist === void 0 ? void 0 : _mobile$byArtist.name) !== null && _ref !== void 0 ? _ref : '';
-      var title = (_ref2 = (_tralbum$current$titl = tralbum === null || tralbum === void 0 || (_tralbum$current = tralbum.current) === null || _tralbum$current === void 0 ? void 0 : _tralbum$current.title) !== null && _tralbum$current$titl !== void 0 ? _tralbum$current$titl : mobile === null || mobile === void 0 ? void 0 : mobile.name) !== null && _ref2 !== void 0 ? _ref2 : '';
+      const pageWindow = getBandcampWindow();
+      const tralbum = pageWindow.TralbumData;
+      const mobile = pageWindow.TralbumJSONLD;
+      const artist = tralbum?.artist ?? mobile?.byArtist?.name ?? '';
+      const title = tralbum?.current?.title ?? mobile?.name ?? '';
       if (!artist || !title) {
         return null;
       }
@@ -41,106 +40,12 @@
       };
     }
 
-    function _arrayLikeToArray(r, a) {
-      (null == a || a > r.length) && (a = r.length);
-      for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e];
-      return n;
-    }
-    function _arrayWithHoles(r) {
-      if (Array.isArray(r)) return r;
-    }
-    function _createForOfIteratorHelper(r, e) {
-      var t = "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"];
-      if (!t) {
-        if (Array.isArray(r) || (t = _unsupportedIterableToArray(r)) || e) {
-          t && (r = t);
-          var n = 0,
-            F = function () {};
-          return {
-            s: F,
-            n: function () {
-              return n >= r.length ? {
-                done: true
-              } : {
-                done: false,
-                value: r[n++]
-              };
-            },
-            e: function (r) {
-              throw r;
-            },
-            f: F
-          };
-        }
-        throw new TypeError("Invalid attempt to iterate non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method.");
-      }
-      var o,
-        a = true,
-        u = false;
-      return {
-        s: function () {
-          t = t.call(r);
-        },
-        n: function () {
-          var r = t.next();
-          return a = r.done, r;
-        },
-        e: function (r) {
-          u = true, o = r;
-        },
-        f: function () {
-          try {
-            a || null == t.return || t.return();
-          } finally {
-            if (u) throw o;
-          }
-        }
-      };
-    }
-    function _iterableToArrayLimit(r, l) {
-      var t = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"];
-      if (null != t) {
-        var e,
-          n,
-          i,
-          u,
-          a = [],
-          f = true,
-          o = false;
-        try {
-          if (i = (t = t.call(r)).next, 0 === l) ; else for (; !(f = (e = i.call(t)).done) && (a.push(e.value), a.length !== l); f = !0);
-        } catch (r) {
-          o = true, n = r;
-        } finally {
-          try {
-            if (!f && null != t.return && (u = t.return(), Object(u) !== u)) return;
-          } finally {
-            if (o) throw n;
-          }
-        }
-        return a;
-      }
-    }
-    function _nonIterableRest() {
-      throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method.");
-    }
-    function _slicedToArray(r, e) {
-      return _arrayWithHoles(r) || _iterableToArrayLimit(r, e) || _unsupportedIterableToArray(r, e) || _nonIterableRest();
-    }
-    function _unsupportedIterableToArray(r, a) {
-      if (r) {
-        if ("string" == typeof r) return _arrayLikeToArray(r, a);
-        var t = {}.toString.call(r).slice(8, -1);
-        return "Object" === t && r.constructor && (t = r.constructor.name), "Map" === t || "Set" === t ? Array.from(r) : "Arguments" === t || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? _arrayLikeToArray(r, a) : void 0;
-      }
-    }
-
-    var ICON_RUTRACKER = 'https://rutracker.me/favicon.ico';
-    var ICON_RED = 'https://redacted.sh/favicon.ico';
-    var ICON_NNM = 'https://nnmclub.to/favicon.ico';
-    var ICON_NEWTEAM = 'https://new-team.org/favicon.ico';
-    var ICON_ORPHEUS = 'https://orpheus.network/favicon.ico';
-    var TRACKERS = [{
+    const ICON_RUTRACKER = 'https://rutracker.me/favicon.ico';
+    const ICON_RED = 'https://redacted.sh/favicon.ico';
+    const ICON_NNM = 'https://nnmclub.to/favicon.ico';
+    const ICON_NEWTEAM = 'https://new-team.org/favicon.ico';
+    const ICON_ORPHEUS = 'https://orpheus.network/favicon.ico';
+    const TRACKERS = [{
       id: 'rutracker',
       name: 'RuTracker',
       label: 'RTO',
@@ -148,11 +53,9 @@
       color: '#408294',
       hoverColor: '#2f6573',
       method: 'get',
-      buildUrl: function buildUrl(query) {
-        return "https://rutracker.me/forum/tracker.php?".concat(new URLSearchParams({
-          nm: query
-        }).toString());
-      }
+      buildUrl: query => `https://rutracker.me/forum/tracker.php?${new URLSearchParams({
+    nm: query
+  }).toString()}`
     }, {
       id: 'red',
       name: 'RED',
@@ -161,13 +64,11 @@
       color: '#c0392b',
       hoverColor: '#962d22',
       method: 'get',
-      buildUrl: function buildUrl(query, mode) {
-        return mode === 'artist' ? "https://redacted.sh/artist.php?".concat(new URLSearchParams({
-          artistname: query
-        }).toString()) : "https://redacted.sh/torrents.php?".concat(new URLSearchParams({
-          searchstr: query
-        }).toString());
-      }
+      buildUrl: (query, mode) => mode === 'artist' ? `https://redacted.sh/artist.php?${new URLSearchParams({
+    artistname: query
+  }).toString()}` : `https://redacted.sh/torrents.php?${new URLSearchParams({
+    searchstr: query
+  }).toString()}`
     }, {
       id: 'nnm',
       name: 'NNM-Club',
@@ -178,13 +79,11 @@
       method: 'post',
       action: 'https://nnmclub.to/forum/tracker.php',
       acceptCharset: 'windows-1251',
-      fields: function fields(query) {
-        return {
-          f: '-1',
-          nm: query,
-          search_submit: 'Искать'
-        };
-      }
+      fields: query => ({
+        f: '-1',
+        nm: query,
+        search_submit: 'Искать'
+      })
     }, {
       id: 'newteam',
       name: 'New-Team',
@@ -193,11 +92,9 @@
       color: '#8e44ad',
       hoverColor: '#6c3483',
       method: 'get',
-      buildUrl: function buildUrl(query) {
-        return "https://new-team.org/search?".concat(new URLSearchParams({
-          q: query
-        }).toString());
-      }
+      buildUrl: query => `https://new-team.org/search?${new URLSearchParams({
+    q: query
+  }).toString()}`
     }, {
       id: 'orpheus',
       name: 'Orpheus',
@@ -206,26 +103,20 @@
       color: '#d35400',
       hoverColor: '#a84300',
       method: 'get',
-      buildUrl: function buildUrl(query, mode) {
-        return mode === 'artist' ? "https://orpheus.network/artist.php?".concat(new URLSearchParams({
-          artistname: query
-        }).toString()) : "https://orpheus.network/torrents.php?".concat(new URLSearchParams({
-          searchstr: query
-        }).toString());
-      }
+      buildUrl: (query, mode) => mode === 'artist' ? `https://orpheus.network/artist.php?${new URLSearchParams({
+    artistname: query
+  }).toString()}` : `https://orpheus.network/torrents.php?${new URLSearchParams({
+    searchstr: query
+  }).toString()}`
     }];
-    var GROUPS = [{
+    const GROUPS = [{
       idSuffix: 'release',
       caption: 'Artist + Release',
-      buildQuery: function buildQuery(release) {
-        return "".concat(release.artist, " ").concat(release.title);
-      }
+      buildQuery: release => `${release.artist} ${release.title}`
     }, {
       idSuffix: 'artist',
       caption: 'Artist',
-      buildQuery: function buildQuery(release) {
-        return release.artist;
-      }
+      buildQuery: release => release.artist
     }];
 
     function applyButtonStyle(element, tracker) {
@@ -233,7 +124,7 @@
         display: 'inline-block',
         marginRight: '6px',
         padding: '3px 8px',
-        border: "1px solid ".concat(tracker.color),
+        border: `1px solid ${tracker.color}`,
         borderRadius: '3px',
         background: tracker.color,
         color: '#fff',
@@ -245,18 +136,18 @@
         cursor: 'pointer',
         transition: 'background 0.15s ease, border-color 0.15s ease'
       });
-      element.addEventListener('mouseenter', function () {
+      element.addEventListener('mouseenter', () => {
         element.style.background = tracker.hoverColor;
         element.style.borderColor = tracker.hoverColor;
       });
-      element.addEventListener('mouseleave', function () {
+      element.addEventListener('mouseleave', () => {
         element.style.background = tracker.color;
         element.style.borderColor = tracker.color;
       });
     }
     function setButtonContent(element, tracker) {
       if (tracker.icon) {
-        var img = document.createElement('img');
+        const img = document.createElement('img');
         img.src = tracker.icon;
         img.alt = '';
         Object.assign(img.style, {
@@ -267,16 +158,16 @@
         });
         element.appendChild(img);
       }
-      var label = document.createElement('span');
+      const label = document.createElement('span');
       label.textContent = tracker.label;
       label.style.verticalAlign = 'middle';
       element.appendChild(label);
     }
     function buildButton(tracker, query, idSuffix) {
-      var titleText = "Search \"".concat(query, "\" on ").concat(tracker.name, " (opens in a new tab)");
+      const titleText = `Search "${query}" on ${tracker.name} (opens in a new tab)`;
       if (tracker.method === 'post') {
-        var form = document.createElement('form');
-        form.id = "".concat(tracker.id, "_").concat(idSuffix);
+        const form = document.createElement('form');
+        form.id = `${tracker.id}_${idSuffix}`;
         form.method = 'post';
         form.action = tracker.action;
         form.target = '_blank';
@@ -285,18 +176,15 @@
         if (tracker.acceptCharset) {
           form.acceptCharset = tracker.acceptCharset;
         }
-        var fields = tracker.fields(query);
-        for (var _i = 0, _Object$entries = Object.entries(fields); _i < _Object$entries.length; _i++) {
-          var _Object$entries$_i = _slicedToArray(_Object$entries[_i], 2),
-            fieldName = _Object$entries$_i[0],
-            fieldValue = _Object$entries$_i[1];
-          var input = document.createElement('input');
+        const fields = tracker.fields(query);
+        for (const [fieldName, fieldValue] of Object.entries(fields)) {
+          const input = document.createElement('input');
           input.type = 'hidden';
           input.name = fieldName;
           input.value = fieldValue;
           form.appendChild(input);
         }
-        var button = document.createElement('button');
+        const button = document.createElement('button');
         button.type = 'submit';
         button.title = titleText;
         applyButtonStyle(button, tracker);
@@ -304,8 +192,8 @@
         form.appendChild(button);
         return form;
       }
-      var link = document.createElement('a');
-      link.id = "".concat(tracker.id, "_").concat(idSuffix);
+      const link = document.createElement('a');
+      link.id = `${tracker.id}_${idSuffix}`;
       link.href = tracker.buildUrl(query, idSuffix);
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
@@ -315,13 +203,13 @@
       return link;
     }
     function buildGroup(group, release) {
-      var container = document.createElement('div');
+      const container = document.createElement('div');
       Object.assign(container.style, {
         border: '1px solid rgba(0, 0, 0, 0.15)',
         borderRadius: '4px',
         padding: '6px 8px'
       });
-      var caption = document.createElement('div');
+      const caption = document.createElement('div');
       caption.textContent = group.caption;
       Object.assign(caption.style, {
         fontSize: '10px',
@@ -332,48 +220,30 @@
         marginBottom: '5px'
       });
       container.appendChild(caption);
-      var query = group.buildQuery(release);
-      var _iterator = _createForOfIteratorHelper(TRACKERS),
-        _step;
-      try {
-        for (_iterator.s(); !(_step = _iterator.n()).done;) {
-          var tracker = _step.value;
-          container.appendChild(buildButton(tracker, query, group.idSuffix));
-        }
-      } catch (err) {
-        _iterator.e(err);
-      } finally {
-        _iterator.f();
+      const query = group.buildQuery(release);
+      for (const tracker of TRACKERS) {
+        container.appendChild(buildButton(tracker, query, group.idSuffix));
       }
       return container;
     }
     function buildSearchGroups(release) {
-      var groupsRow = document.createElement('div');
+      const groupsRow = document.createElement('div');
       Object.assign(groupsRow.style, {
         display: 'flex',
         flexWrap: 'wrap',
         gap: '6px',
         alignItems: 'flex-start'
       });
-      var _iterator2 = _createForOfIteratorHelper(GROUPS),
-        _step2;
-      try {
-        for (_iterator2.s(); !(_step2 = _iterator2.n()).done;) {
-          var group = _step2.value;
-          groupsRow.appendChild(buildGroup(group, release));
-        }
-      } catch (err) {
-        _iterator2.e(err);
-      } finally {
-        _iterator2.f();
+      for (const group of GROUPS) {
+        groupsRow.appendChild(buildGroup(group, release));
       }
       return groupsRow;
     }
 
-    var CONTAINER_ID = 'bc_tracker_search';
+    const CONTAINER_ID = 'bc_tracker_search';
     function insertButton(release) {
       // don't insert on non-release pages
-      var anchor = document.querySelector('div.trackView');
+      const anchor = document.querySelector('div.trackView');
       if (!anchor) {
         return;
       }
@@ -384,10 +254,10 @@
       }
 
       // Prepare our UI element
-      var wrapper = document.createElement('div');
+      const wrapper = document.createElement('div');
       wrapper.id = CONTAINER_ID;
       wrapper.style.marginBlock = '24px';
-      var header = document.createElement('div');
+      const header = document.createElement('div');
       header.textContent = 'Search';
       Object.assign(header.style, {
         fontSize: '16px',
@@ -402,7 +272,7 @@
     }
 
     function init() {
-      var release = getReleaseData();
+      const release = getReleaseData();
       if (!release) {
         return;
       }
