@@ -1,0 +1,14 @@
+{
+    "name": "Bandcamp Collection Downloader",
+    "description": "Downloads free and purchased Bandcamp releases as zipped FLAC, with batch progress on discography pages.",
+    "version": "1.0.1",
+    "author": "",
+    "namespace": "https://github.com/jrm/bandcamp-collection-downloader",
+    "downloadURL": "https://github.com/jrm/bandcamp-collection-downloader/raw/master/dist/collection_downloader.user.js",
+    "updateURL": "https://github.com/jrm/bandcamp-collection-downloader/raw/master/dist/collection_downloader.user.js",
+    "match": ["https://bandcamp.com/*", "https://*.bandcamp.com/*"],
+    "connect": ["bandcamp.com", "*.bandcamp.com", "*.bcbits.com", "api.guerrillamail.com", "guerrillamail.com"],
+    "grant": ["GM_download", "GM_xmlhttpRequest"],
+    "runAt": "document-idle",
+    "icon": "https://s4.bcbits.com/img/favicon/favicon-32x32.png"
+}

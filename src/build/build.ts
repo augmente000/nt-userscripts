@@ -9,6 +9,8 @@ import { rollup } from 'rollup';
 import { z } from 'zod';
 
 const EXTENSIONS = ['.js', '.ts'];
+const SRC_DIR = './src/userscripts';
+
 const BABEL_OPTIONS = {
     babelrc: false,
     configFile: false,
@@ -42,6 +44,7 @@ const MetadataSchema = z
         updateURL: z.string(),
         match: z.array(z.string()).optional(),
         include: z.array(z.string()).optional(),
+        connect: z.array(z.string()).optional(),
         require: z.array(z.string()).optional(),
         grant: z.array(z.string()).optional(),
         runAt: z.string().optional(),
@@ -53,16 +56,22 @@ const MetadataSchema = z
     });
 type UserscriptMetadata = z.infer<typeof MetadataSchema>;
 
+async function getUserscriptDirs(): Promise<string[]> {
+    const entries = await fs.readdir(SRC_DIR, { withFileTypes: true });
+
+    return entries.filter(entry => entry.isDirectory()).map(entry => entry.name);
+}
+
 async function buildUserscript(userscriptName: string): Promise<void> {
     console.log(`Building ${userscriptName}`);
 
-    const inputPath = path.resolve('./src/userscripts', userscriptName, 'index.ts');
+    const inputPath = path.resolve(SRC_DIR, userscriptName, 'index.ts');
 
     // Check if the input file exists
     try {
         await fs.access(inputPath);
     } catch {
-        throw new Error(`No index.ts found in src/userscripts/${userscriptName}/`);
+        throw new Error(`No index.ts found in ${SRC_DIR}/${userscriptName}/`);
     }
 
     const bundle = await rollup({
@@ -84,26 +93,30 @@ async function buildUserscript(userscriptName: string): Promise<void> {
         ],
     });
 
-    const { output } = await bundle.generate({
-        format: 'iife',
-        name: 'Userscript',
-    });
+    try {
+        const { output } = await bundle.generate({
+            format: 'iife',
+            name: 'Userscript',
+        });
 
-    // Load metadata
-    const metadataPath = path.resolve('./src/userscripts', userscriptName, 'meta.json');
-    const metadata = JSON.parse(await fs.readFile(metadataPath, 'utf8')) as unknown;
-    const typedMetadata = MetadataSchema.parse(metadata);
+        // Load metadata
+        const metadataPath = path.resolve(SRC_DIR, userscriptName, 'meta.json');
+        const metadata = JSON.parse(await fs.readFile(metadataPath, 'utf8')) as unknown;
+        const typedMetadata = MetadataSchema.parse(metadata);
 
-    // Generate userscript header
-    const header = generateUserscriptHeader(typedMetadata);
+        // Generate userscript header
+        const header = generateUserscriptHeader(typedMetadata);
 
-    // Combine header and code
-    const finalCode = `${header}\n\n${output[0].code}`;
+        // Combine header and code
+        const finalCode = `${header}\n\n${output[0].code}`;
 
-    // Write the userscript file
-    const outputPath = path.resolve('./dist', `${userscriptName}.user.js`);
-    await fs.mkdir(path.dirname(outputPath), { recursive: true });
-    await fs.writeFile(outputPath, finalCode, 'utf8');
+        // Write the userscript file
+        const outputPath = path.resolve('./dist', `${userscriptName}.user.js`);
+        await fs.mkdir(path.dirname(outputPath), { recursive: true });
+        await fs.writeFile(outputPath, finalCode, 'utf8');
+    } finally {
+        await bundle.close();
+    }
 
     console.log(`Built ${userscriptName}.user.js`);
 }
@@ -126,6 +139,12 @@ function generateUserscriptHeader(metadata: UserscriptMetadata): string {
     } else if (metadata.include) {
         metadata.include.forEach(pattern => {
             lines.push(`@include      ${pattern}`);
+        });
+    }
+
+    if (metadata.connect) {
+        metadata.connect.forEach(host => {
+            lines.push(`@connect      ${host}`);
         });
     }
 
@@ -154,24 +173,52 @@ function generateUserscriptHeader(metadata: UserscriptMetadata): string {
     return lines.map(line => `// ${line}`).join('\n');
 }
 
+async function buildAll(): Promise<void> {
+    const userscriptDirs = await getUserscriptDirs();
+
+    if (userscriptDirs.length === 0) {
+        console.log(`No userscript directories found in ${SRC_DIR}/`);
+        return;
+    }
+
+    // Build each userscript
+    for (const userscriptName of userscriptDirs) {
+        await buildUserscript(userscriptName);
+    }
+
+    console.log('Build completed successfully!');
+}
+
+async function watch(): Promise<void> {
+    await buildAll();
+
+    console.log(`Watching ${SRC_DIR}/ for changes...`);
+
+    let pendingBuild: NodeJS.Timeout | undefined;
+    const watcher = fs.watch(SRC_DIR, { recursive: true });
+
+    for await (const event of watcher) {
+        if (!event.filename) {
+            continue;
+        }
+
+        clearTimeout(pendingBuild);
+        pendingBuild = setTimeout(() => {
+            buildAll().catch((error: unknown) => {
+                console.error('Build failed:', error);
+            });
+        }, 100);
+    }
+}
+
 async function main(): Promise<void> {
     try {
-        // Get all userscript directories
-        const srcDir = './src/userscripts';
-        const entries = await fs.readdir(srcDir, { withFileTypes: true });
-        const userscriptDirs = entries.filter(entry => entry.isDirectory()).map(entry => entry.name);
-
-        if (userscriptDirs.length === 0) {
-            console.log('No userscript directories found in src/userscripts/');
+        if (process.argv.includes('--watch')) {
+            await watch();
             return;
         }
 
-        // Build each userscript
-        for (const userscriptName of userscriptDirs) {
-            await buildUserscript(userscriptName);
-        }
-
-        console.log('Build completed successfully!');
+        await buildAll();
     } catch (error) {
         console.error('Build failed:', error);
         process.exit(1);
