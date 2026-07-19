@@ -1,8 +1,8 @@
-import { classifyRelease, detectPage, discoverReleases, fetchRelease, parseReleaseDocument } from './bandcamp.ts';
-import { downloadRelease } from './downloader.ts';
-import { GuerrillaInbox } from './guerrilla-mail.ts';
-import { ProgressUi, progressUiExists } from './progress-ui.ts';
-import type { ProgressSnapshot, ReleaseInfo, ReleaseTask } from './types.ts';
+import { classifyRelease, detectPage, discoverReleases, fetchRelease, parseReleaseDocument } from './utils/bandcamp.ts';
+import { downloadRelease } from './utils/downloader.ts';
+import { GuerrillaInbox } from './utils/guerrilla-mail.ts';
+import { ProgressUi, progressUiExists } from './utils/progress-ui.ts';
+import type { ProgressSnapshot, ReleaseInfo, ReleaseTask } from './utils/types.ts';
 
 const MAX_ACTIVE_DOWNLOADS = 3;
 
