@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bandcamp Collection Downloader
 // @description  Downloads free and purchased Bandcamp releases as zipped FLAC, with batch progress on discography pages.
-// @version      2026.07.19.1
+// @version      2026.07.22.1
 // @author       
 // @namespace    https://greasyfork.org/en/scripts/587730-bandcamp-collection-downloader
 // @downloadURL  https://update.greasyfork.org/scripts/587730/Bandcamp%20Collection%20Downloader.user.js
@@ -269,7 +269,9 @@
 
     function detectPage(location = window.location) {
       const path = location.pathname.replace(/\/+$/, '') || '/';
-      if (path === '/music') {
+      const host = location.hostname.toLowerCase();
+      const isArtistSubdomain = host.endsWith('.bandcamp.com') && host !== 'www.bandcamp.com';
+      if (path === '/music' || path === '/' && isArtistSubdomain) {
         return 'discography';
       }
       if (/^\/(album|track)\/[^/]+$/.test(path)) {
