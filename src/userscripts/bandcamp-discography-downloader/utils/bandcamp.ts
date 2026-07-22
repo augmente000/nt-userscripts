@@ -30,7 +30,9 @@ export type PageKind = 'discography' | 'release' | 'unsupported';
 
 export function detectPage(location: Location = window.location): PageKind {
     const path = location.pathname.replace(/\/+$/, '') || '/';
-    if (path === '/music') {
+    const host = location.hostname.toLowerCase();
+    const isArtistSubdomain = host.endsWith('.bandcamp.com') && host !== 'www.bandcamp.com';
+    if (path === '/music' || (path === '/' && isArtistSubdomain)) {
         return 'discography';
     }
     if (/^\/(album|track)\/[^/]+$/.test(path)) {
