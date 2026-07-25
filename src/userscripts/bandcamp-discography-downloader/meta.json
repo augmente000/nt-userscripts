@@ -6,21 +6,9 @@
     "namespace": "https://greasyfork.org/en/scripts/587730-bandcamp-collection-downloader",
     "downloadURL": "https://update.greasyfork.org/scripts/587730/Bandcamp%20Collection%20Downloader.user.js",
     "updateURL": "https://update.greasyfork.org/scripts/587730/Bandcamp%20Collection%20Downloader.meta.js",
-    "match": [
-        "https://bandcamp.com/*",
-        "https://*.bandcamp.com/*"
-    ],
-    "connect": [
-        "bandcamp.com",
-        "*.bandcamp.com",
-        "*.bcbits.com",
-        "api.guerrillamail.com",
-        "guerrillamail.com"
-    ],
-    "grant": [
-        "GM_download",
-        "GM_xmlhttpRequest"
-    ],
+    "match": ["https://bandcamp.com/*", "https://*.bandcamp.com/*"],
+    "connect": ["bandcamp.com", "*.bandcamp.com", "*.bcbits.com", "api.guerrillamail.com", "guerrillamail.com"],
+    "grant": ["GM_download", "GM_xmlhttpRequest"],
     "runAt": "document-idle",
     "icon": "https://s4.bcbits.com/img/favicon/favicon-32x32.png"
 }

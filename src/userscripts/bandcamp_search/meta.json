@@ -12,9 +12,7 @@
         "https://*/album/*",
         "https://*/track/*"
     ],
-    "grant": [
-        "unsafeWindow"
-    ],
+    "grant": ["unsafeWindow"],
     "runAt": "document-end",
     "icon": "https://www.google.com/s2/favicons?sz=64&domain=bandcamp.com"
 }

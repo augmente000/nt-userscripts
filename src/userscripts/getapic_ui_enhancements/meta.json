@@ -6,15 +6,8 @@
     "namespace": "https://update.greasyfork.org/scripts/585345",
     "downloadURL": "https://update.greasyfork.org/scripts/585345/getapic_ui_enhancements.user.js",
     "updateURL": "https://update.greasyfork.org/scripts/585345/getapic_ui_enhancements.user.js",
-    "match": [
-        "https://getapic.me/v",
-        "https://getapic.me/v/*",
-        "https://getapic.me/v?*"
-    ],
-    "grant": [
-        "GM_openInTab",
-        "unsafeWindow"
-    ],
+    "match": ["https://getapic.me/v", "https://getapic.me/v/*", "https://getapic.me/v?*"],
+    "grant": ["GM_openInTab", "unsafeWindow"],
     "runAt": "document-end",
     "icon": "https://www.google.com/s2/favicons?sz=64&domain=getapic.me"
 }
