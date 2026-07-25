@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bandcamp Discography Pruner
 // @description  Persistently hides selected releases from Bandcamp discography pages.
-// @version      2026.07.26.1
+// @version      2026.07.26.2
 // @author       
 // @namespace    https://update.greasyfork.org/scripts/588560
 // @downloadURL  https://update.greasyfork.org/scripts/588560/bandcamp-discography-pruner.user.js
