@@ -1,0 +1,13 @@
+{
+    "name": "RuTracker New-Team Logchecker",
+    "description": "Checks supported CD rip logs on RuTracker topic pages with the New-Team logchecker.",
+    "version": "2026.07.27.7",
+    "author": "",
+    "namespace": "https://update.greasyfork.org/scripts/539543",
+    "downloadURL": "https://update.greasyfork.org/scripts/539543/RTO%20EAC%20Validator.user.js",
+    "updateURL": "https://update.greasyfork.org/scripts/539543/RTO%20EAC%20Validator.meta.js",
+    "match": ["https://rutracker.org/forum/viewtopic.php*"],
+    "connect": ["new-team.org"],
+    "grant": ["GM_xmlhttpRequest", "unsafeWindow"],
+    "runAt": "document-idle"
+}

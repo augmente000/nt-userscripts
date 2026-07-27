@@ -1,5 +1,9 @@
 # Scripts
 
+## RuTracker New-Team Logchecker
+
+A userscript for RuTracker topic pages that checks EAC, XLD, dBpoweramp, and whippy/whipper CD rip logs with the New-Team logchecker when their spoilers are expanded.
+
 ## Bandcamp Collection Downloader
 
 A userscript for saving free or purchased Bandcamp releases in lossless FLAC format.
