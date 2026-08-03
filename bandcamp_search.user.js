@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Search Bandcamp releases on trackers
 // @description  Add a button on Bandcamp's album pages to search the album artist + album name on trackers
-// @version      2026.07.06.1
+// @version      2026.08.03.1
 // @author       987982598734
 // @namespace    https://update.greasyfork.org/scripts/584978
 // @downloadURL  https://update.greasyfork.org/scripts/584978/Search%20Bandcamp%20releases%20on%20trackers.user.js
@@ -40,27 +40,22 @@
       };
     }
 
-    const ICON_RUTRACKER = 'https://rutracker.me/favicon.ico';
-    const ICON_RED = 'https://redacted.sh/favicon.ico';
-    const ICON_NNM = 'https://nnmclub.to/favicon.ico';
-    const ICON_NEWTEAM = 'https://new-team.org/favicon.ico';
-    const ICON_ORPHEUS = 'https://orpheus.network/favicon.ico';
     const TRACKERS = [{
       id: 'rutracker',
       name: 'RuTracker',
       label: 'RTO',
-      icon: ICON_RUTRACKER,
+      icon: 'https://rutracker.org/favicon.ico',
       color: '#408294',
       hoverColor: '#2f6573',
       method: 'get',
-      buildUrl: query => `https://rutracker.me/forum/tracker.php?${new URLSearchParams({
+      buildUrl: query => `https://rutracker.org/forum/tracker.php?${new URLSearchParams({
     nm: query
   }).toString()}`
     }, {
       id: 'red',
       name: 'RED',
       label: 'RED',
-      icon: ICON_RED,
+      icon: 'https://redacted.sh/favicon.ico',
       color: '#c0392b',
       hoverColor: '#962d22',
       method: 'get',
@@ -70,10 +65,34 @@
     searchstr: query
   }).toString()}`
     }, {
+      id: 'orpheus',
+      name: 'Orpheus',
+      label: 'OPS',
+      icon: 'https://orpheus.network/favicon.ico',
+      color: '#d35400',
+      hoverColor: '#a84300',
+      method: 'get',
+      buildUrl: (query, mode) => mode === 'artist' ? `https://orpheus.network/artist.php?${new URLSearchParams({
+    artistname: query
+  }).toString()}` : `https://orpheus.network/torrents.php?${new URLSearchParams({
+    searchstr: query
+  }).toString()}`
+    }, {
+      id: 'newteam',
+      name: 'New-Team',
+      label: 'NT',
+      icon: 'https://new-team.org/favicon.ico',
+      color: '#8e44ad',
+      hoverColor: '#6c3483',
+      method: 'get',
+      buildUrl: query => `https://new-team.org/search?${new URLSearchParams({
+    q: query
+  }).toString()}`
+    }, {
       id: 'nnm',
       name: 'NNM-Club',
       label: 'NNM',
-      icon: ICON_NNM,
+      icon: 'https://nnmclub.to/favicon.ico',
       color: '#5b7a1c',
       hoverColor: '#445a15',
       method: 'post',
@@ -84,30 +103,6 @@
         nm: query,
         search_submit: 'Искать'
       })
-    }, {
-      id: 'newteam',
-      name: 'New-Team',
-      label: 'NT',
-      icon: ICON_NEWTEAM,
-      color: '#8e44ad',
-      hoverColor: '#6c3483',
-      method: 'get',
-      buildUrl: query => `https://new-team.org/search?${new URLSearchParams({
-    q: query
-  }).toString()}`
-    }, {
-      id: 'orpheus',
-      name: 'Orpheus',
-      label: 'OPS',
-      icon: ICON_ORPHEUS,
-      color: '#d35400',
-      hoverColor: '#a84300',
-      method: 'get',
-      buildUrl: (query, mode) => mode === 'artist' ? `https://orpheus.network/artist.php?${new URLSearchParams({
-    artistname: query
-  }).toString()}` : `https://orpheus.network/torrents.php?${new URLSearchParams({
-    searchstr: query
-  }).toString()}`
     }];
     const GROUPS = [{
       idSuffix: 'release',
