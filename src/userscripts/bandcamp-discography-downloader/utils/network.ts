@@ -19,6 +19,7 @@ interface ResponseData {
 }
 
 const BINARY_CHUNK_SIZE = 8 * 1_048_576;
+const BANDCAMP_THROTTLE_DELAYS = [2_000, 10_000, 30_000, 60_000, 120_000, 300_000] as const;
 
 export class HttpError extends Error {
     readonly status: number;
@@ -129,11 +130,30 @@ export function request(url: string, options: RequestOptions = {}): Promise<Resp
 }
 
 export async function requestText(url: string, options: RequestOptions = {}): Promise<string> {
-    const response = await request(url, { ...options, responseType: 'text' });
-    if (typeof response.body !== 'string') {
-        throw new Error(`Expected a text response from ${url}`);
+    let throttleCount = 0;
+    while (true) {
+        try {
+            const response = await request(url, { ...options, responseType: 'text' });
+            if (typeof response.body !== 'string') {
+                throw new Error(`Expected a text response from ${url}`);
+            }
+            return response.body;
+        } catch (error) {
+            if (!(error instanceof HttpError) || error.status !== 419 || !isBandcampUrl(url)) {
+                throw error;
+            }
+
+            const delay =
+                BANDCAMP_THROTTLE_DELAYS[Math.min(throttleCount, BANDCAMP_THROTTLE_DELAYS.length - 1)] ??
+                BANDCAMP_THROTTLE_DELAYS[0];
+            throttleCount += 1;
+            console.warn(
+                `[Bandcamp Collection Downloader] Bandcamp throttled a request; retrying in ${delay / 1_000}s`,
+                url,
+            );
+            await sleep(delay, options.signal);
+        }
     }
-    return response.body;
 }
 
 export async function requestJson<T>(url: string, options: RequestOptions = {}): Promise<T> {
@@ -149,6 +169,15 @@ function headerValue(headers: string, name: string): string | null {
     const prefix = `${name.toLowerCase()}:`;
     const line = headers.split(/\r?\n/).find(candidate => candidate.toLowerCase().startsWith(prefix));
     return line ? line.slice(line.indexOf(':') + 1).trim() : null;
+}
+
+function isBandcampUrl(url: string): boolean {
+    try {
+        const hostname = new URL(url, window.location.href).hostname.toLowerCase();
+        return hostname === 'bandcamp.com' || hostname.endsWith('.bandcamp.com');
+    } catch {
+        return false;
+    }
 }
 
 function contentDispositionFileName(value: string | null): string | null {
