@@ -1,7 +1,8 @@
 import { setInputValue } from '../utils/input';
 
 const CATALOG_NUMBER_PATTERN = /\bMilieu\s+Music\s+number\s+([^\s,.;:!?()[\]{}]+)/iu;
-const LABEL_MBID = '51e69c25-113c-4052-b430-837f9eebb3ac';
+const MILIEU_MUSIC_MBID = '30166e7a-d7ca-4b32-9e22-2228958db577';
+const MILIEU_MUSIC_DIGITAL_MBID = '51e69c25-113c-4052-b430-837f9eebb3ac';
 const MILIEU_MUSIC_PATTERN = /\bMilieu\s+Music\b/iu;
 const POLL_INTERVAL_MS = 500;
 
@@ -18,9 +19,21 @@ function extractCatalogNumber(annotation: string): string | undefined {
     return CATALOG_NUMBER_PATTERN.exec(annotation)?.[1];
 }
 
-function findEmptyLabel(): AddedLabel | undefined {
+function findMilieuMusicLabel(): AddedLabel | undefined {
     const labelInput = document.querySelector<HTMLInputElement>('input[id^="label-"]');
-    if (!labelInput || labelInput.value.trim()) {
+    if (!labelInput) {
+        return undefined;
+    }
+
+    const labelValue = labelInput.value.trim();
+    let labelMbid: string;
+    if (labelValue === 'Milieu Music') {
+        labelMbid = MILIEU_MUSIC_MBID;
+    } else if (labelValue === 'Milieu Music Digital') {
+        labelMbid = MILIEU_MUSIC_DIGITAL_MBID;
+    } else if (!labelValue) {
+        labelMbid = MILIEU_MUSIC_DIGITAL_MBID;
+    } else {
         return undefined;
     }
 
@@ -30,7 +43,7 @@ function findEmptyLabel(): AddedLabel | undefined {
         return undefined;
     }
 
-    setInputValue(labelInput, LABEL_MBID);
+    setInputValue(labelInput, labelMbid);
     return { catalogNumberInput, row };
 }
 
@@ -61,7 +74,7 @@ export function initMilieuMusicAutofill(): void {
         }
 
         if (!labelInsertionHandled) {
-            const label = findEmptyLabel();
+            const label = findMilieuMusicLabel();
             if (!label) {
                 return;
             }
