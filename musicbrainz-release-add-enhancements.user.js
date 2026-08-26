@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         MusicBrainz Release Add Enhancements
 // @description  Adds label autofill, Guess Case normalization, and duplicate release-group controls to the MusicBrainz release add page.
-// @version      2026.08.26.1
+// @version      2026.08.26.2
 // @author       
 // @namespace    https://github.com/augmente000/nt-userscripts
-// @downloadURL  https://raw.githubusercontent.com/augmente000/nt-userscripts/master/dist/musicbrainz-release-add-enhancements.user.js
-// @updateURL    https://raw.githubusercontent.com/augmente000/nt-userscripts/master/dist/musicbrainz-release-add-enhancements.user.js
+// @downloadURL  https://raw.githubusercontent.com/augmente000/nt-userscripts/dist/musicbrainz-release-add-enhancements.user.js
+// @updateURL    https://raw.githubusercontent.com/augmente000/nt-userscripts/dist/musicbrainz-release-add-enhancements.user.js
 // @match        https://*.musicbrainz.org/release/add*
 // @grant        none
 // @run-at       document-idle
