@@ -1,12 +1,12 @@
 // ==UserScript==
 // @name         MusicBrainz Release Add Enhancements
 // @description  Adds label autofill, Guess Case normalization, and duplicate release-group controls to the MusicBrainz release add page.
-// @version      2026.08.12.2
+// @version      2026.08.26.1
 // @author       
 // @namespace    https://github.com/augmente000/nt-userscripts
 // @downloadURL  https://raw.githubusercontent.com/augmente000/nt-userscripts/master/dist/musicbrainz-release-add-enhancements.user.js
 // @updateURL    https://raw.githubusercontent.com/augmente000/nt-userscripts/master/dist/musicbrainz-release-add-enhancements.user.js
-// @match        https://beta.musicbrainz.org/release/add*
+// @match        https://*.musicbrainz.org/release/add*
 // @grant        none
 // @run-at       document-idle
 // @icon         https://musicbrainz.org/static/images/favicons/favicon-32x32.png
@@ -253,7 +253,8 @@
     }
 
     const CATALOG_NUMBER_PATTERN = /\bMilieu\s+Music\s+number\s+([^\s,.;:!?()[\]{}]+)/iu;
-    const LABEL_MBID = '51e69c25-113c-4052-b430-837f9eebb3ac';
+    const MILIEU_MUSIC_MBID = '30166e7a-d7ca-4b32-9e22-2228958db577';
+    const MILIEU_MUSIC_DIGITAL_MBID = '51e69c25-113c-4052-b430-837f9eebb3ac';
     const MILIEU_MUSIC_PATTERN = /\bMilieu\s+Music\b/iu;
     const POLL_INTERVAL_MS = 500;
     function annotationText() {
@@ -262,9 +263,20 @@
     function extractCatalogNumber(annotation) {
       return CATALOG_NUMBER_PATTERN.exec(annotation)?.[1];
     }
-    function findEmptyLabel() {
+    function findMilieuMusicLabel() {
       const labelInput = document.querySelector('input[id^="label-"]');
-      if (!labelInput || labelInput.value.trim()) {
+      if (!labelInput) {
+        return undefined;
+      }
+      const labelValue = labelInput.value.trim();
+      let labelMbid;
+      if (labelValue === 'Milieu Music') {
+        labelMbid = MILIEU_MUSIC_MBID;
+      } else if (labelValue === 'Milieu Music Digital') {
+        labelMbid = MILIEU_MUSIC_DIGITAL_MBID;
+      } else if (!labelValue) {
+        labelMbid = MILIEU_MUSIC_DIGITAL_MBID;
+      } else {
         return undefined;
       }
       const row = labelInput.closest('tr');
@@ -272,7 +284,7 @@
       if (!row || !catalogNumberInput) {
         return undefined;
       }
-      setInputValue(labelInput, LABEL_MBID);
+      setInputValue(labelInput, labelMbid);
       return {
         catalogNumberInput,
         row
@@ -301,7 +313,7 @@
           return;
         }
         if (!labelInsertionHandled) {
-          const label = findEmptyLabel();
+          const label = findMilieuMusicLabel();
           if (!label) {
             return;
           }
