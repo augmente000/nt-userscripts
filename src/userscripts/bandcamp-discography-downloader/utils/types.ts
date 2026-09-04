@@ -5,6 +5,10 @@ export interface ReleaseTask {
     url: string;
 }
 
+export interface ReleaseFailure extends ReleaseTask {
+    detail: string;
+}
+
 export interface TralbumCurrent {
     id: number;
     title: string;
@@ -58,6 +62,7 @@ export interface ProgressSnapshot {
     completed: number;
     current: string[];
     failed: number;
+    failures: ReleaseFailure[];
     progress: number;
     queued: number;
     skipped: number;

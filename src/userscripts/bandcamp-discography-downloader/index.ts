@@ -24,6 +24,7 @@ async function runQueue(
         completed: 0,
         current: [],
         failed: 0,
+        failures: [],
         progress: 0,
         queued: tasks.length,
         skipped: 0,
@@ -54,11 +55,13 @@ async function runQueue(
             statuses.set(index, `${task.title}: loading release page`);
             render();
 
+            let failureTask = task;
             try {
                 const release =
                     currentRelease && tasks.length === 1 && task.url === currentRelease.url
                         ? currentRelease
                         : await fetchRelease(task.url, signal);
+                failureTask = { title: release.title, url: release.url };
                 const report = (message: string, progress?: number): void => {
                     statuses.set(index, `${release.title}: ${message}`);
                     if (progress !== undefined) {
@@ -77,8 +80,10 @@ async function runQueue(
                 if (signal.aborted) {
                     statuses.set(index, `${task.title}: stopped`);
                 } else {
+                    const detail = errorMessage(error);
                     snapshot.failed += 1;
-                    statuses.set(index, `${task.title}: ${errorMessage(error)}`);
+                    snapshot.failures.push({ ...failureTask, detail });
+                    statuses.set(index, `${failureTask.title}: ${detail}`);
                     console.error('[Bandcamp Collection Downloader]', task.url, error);
                 }
             } finally {

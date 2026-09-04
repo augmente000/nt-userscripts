@@ -237,6 +237,16 @@ export class ProgressUi {
                 font-size: 11px;
                 white-space: pre-line;
             }
+            .bcd-current a {
+                display: block;
+                overflow: hidden;
+                color: var(--bcd-danger);
+                cursor: pointer;
+                text-decoration: underline;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .bcd-current a:hover { color: #ffd2cd; }
             .bcd-root.bcd-detailed { padding: 10px; }
             .bcd-detailed .bcd-panel { padding-top: 10px; }
             .bcd-detailed .bcd-current {
@@ -394,6 +404,7 @@ export class ProgressUi {
             completed: 0,
             current: ['Preparing downloads'],
             failed: 0,
+            failures: [],
             progress: 0,
             queued: total,
             skipped: 0,
@@ -440,10 +451,23 @@ export class ProgressUi {
             this.action.disabled = false;
         }
         if (this.showDetails) {
-            this.current.textContent =
+            const result =
                 snapshot.total === 0
                     ? 'No album or track releases were found on this page.'
                     : `${snapshot.completed} saved, ${snapshot.skipped} skipped, ${snapshot.failed} failed.`;
+            this.current.replaceChildren(document.createTextNode(result));
+            if (snapshot.failures.length > 0) {
+                this.current.append(document.createTextNode('\nFailed releases:'));
+                for (const failure of snapshot.failures) {
+                    const link = document.createElement('a');
+                    link.href = failure.url;
+                    link.target = '_blank';
+                    link.rel = 'noopener noreferrer';
+                    link.textContent = failure.title;
+                    link.title = `${failure.title}: ${failure.detail}`;
+                    this.current.append(link);
+                }
+            }
         }
     }
 
