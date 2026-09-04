@@ -343,7 +343,7 @@ export class ProgressUi {
         this.collapse.setAttribute('aria-label', 'Collapse downloader');
         buttonContent(this.collapse, null, 'collapse');
         this.collapse.addEventListener('click', () => this.setCollapsed(this.root.dataset['collapsed'] !== 'true'));
-        controls.append(this.collapse, this.action, this.stop);
+        controls.append(this.action, this.stop, this.collapse);
 
         this.panel = document.createElement('div');
         this.panel.className = 'bcd-panel';
