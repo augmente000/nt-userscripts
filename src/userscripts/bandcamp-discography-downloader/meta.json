@@ -1,7 +1,7 @@
 {
     "name": "Bandcamp Collection Downloader",
     "description": "Downloads free and purchased Bandcamp releases as zipped FLAC, with batch progress on discography pages.",
-    "version": "2026.08.08.1",
+    "version": "2026.09.04.1",
     "author": "",
     "namespace": "https://greasyfork.org/en/scripts/587730-bandcamp-collection-downloader",
     "downloadURL": "https://update.greasyfork.org/scripts/587730/Bandcamp%20Collection%20Downloader.user.js",
