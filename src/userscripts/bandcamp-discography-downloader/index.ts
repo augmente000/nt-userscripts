@@ -138,6 +138,9 @@ function main(): void {
         pageKind === 'discography' ? 'Download All' : 'Download',
         pageKind === 'discography',
         () => {
+            if (pageKind === 'discography') {
+                tasks = discoverReleases(document, window.location.href);
+            }
             controller = new AbortController();
             ui.start(tasks.length);
             void runQueue(tasks, ui, currentRelease, controller.signal);

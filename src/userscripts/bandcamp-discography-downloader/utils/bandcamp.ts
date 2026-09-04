@@ -61,27 +61,30 @@ function visibleGridItem(element: HTMLElement): boolean {
     if (element.hidden || element.style.display === 'none') {
         return false;
     }
-    return !element.getAttribute('style')?.replace(/\s/g, '').includes('display:none');
+
+    return element.ownerDocument.defaultView?.getComputedStyle(element).display !== 'none';
 }
 
 export function discoverReleases(document: Document, pageUrl: string): ReleaseTask[] {
     const releases = new Map<string, ReleaseTask>();
+    const domReleaseUrls = new Set<string>();
     const grid = document.querySelector<HTMLElement>('ol#music-grid');
     if (!grid) {
         return [];
     }
 
     for (const item of grid.querySelectorAll<HTMLElement>('li')) {
-        if (!visibleGridItem(item)) {
-            continue;
-        }
-
         const anchor = item.querySelector<HTMLAnchorElement>('a[href*="/album/"], a[href*="/track/"]');
         if (!anchor) {
             continue;
         }
 
         const url = normalizeReleaseUrl(anchor.getAttribute('href') ?? anchor.href, pageUrl);
+        domReleaseUrls.add(url);
+        if (!visibleGridItem(item)) {
+            continue;
+        }
+
         const title =
             item.querySelector<HTMLElement>('.title')?.textContent?.trim() ||
             anchor.getAttribute('title')?.trim() ||
@@ -108,6 +111,9 @@ export function discoverReleases(document: Document, pageUrl: string): ReleaseTa
                 }
 
                 const url = normalizeReleaseUrl(item.page_url, pageUrl);
+                if (domReleaseUrls.has(url)) {
+                    continue;
+                }
                 releases.set(url, {
                     title: typeof item.title === 'string' ? item.title : 'Untitled release',
                     url,
