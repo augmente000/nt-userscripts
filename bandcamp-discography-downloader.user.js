@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bandcamp Collection Downloader
 // @description  Downloads free and purchased Bandcamp releases as zipped FLAC, with batch progress on discography pages.
-// @version      2026.08.08.1
+// @version      2026.09.04.1
 // @author       
 // @namespace    https://greasyfork.org/en/scripts/587730-bandcamp-collection-downloader
 // @downloadURL  https://update.greasyfork.org/scripts/587730/Bandcamp%20Collection%20Downloader.user.js
@@ -318,23 +318,25 @@
       if (element.hidden || element.style.display === 'none') {
         return false;
       }
-      return !element.getAttribute('style')?.replace(/\s/g, '').includes('display:none');
+      return element.ownerDocument.defaultView?.getComputedStyle(element).display !== 'none';
     }
     function discoverReleases(document, pageUrl) {
       const releases = new Map();
+      const domReleaseUrls = new Set();
       const grid = document.querySelector('ol#music-grid');
       if (!grid) {
         return [];
       }
       for (const item of grid.querySelectorAll('li')) {
-        if (!visibleGridItem(item)) {
-          continue;
-        }
         const anchor = item.querySelector('a[href*="/album/"], a[href*="/track/"]');
         if (!anchor) {
           continue;
         }
         const url = normalizeReleaseUrl(anchor.getAttribute('href') ?? anchor.href, pageUrl);
+        domReleaseUrls.add(url);
+        if (!visibleGridItem(item)) {
+          continue;
+        }
         const title = item.querySelector('.title')?.textContent?.trim() || anchor.getAttribute('title')?.trim() || anchor.textContent?.trim() || 'Untitled release';
         releases.set(url, {
           title,
@@ -354,6 +356,9 @@
               continue;
             }
             const url = normalizeReleaseUrl(item.page_url, pageUrl);
+            if (domReleaseUrls.has(url)) {
+              continue;
+            }
             releases.set(url, {
               title: typeof item.title === 'string' ? item.title : 'Untitled release',
               url
@@ -1382,6 +1387,16 @@
                 font-size: 11px;
                 white-space: pre-line;
             }
+            .bcd-current a {
+                display: block;
+                overflow: hidden;
+                color: var(--bcd-danger);
+                cursor: pointer;
+                text-decoration: underline;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .bcd-current a:hover { color: #ffd2cd; }
             .bcd-root.bcd-detailed { padding: 10px; }
             .bcd-detailed .bcd-panel { padding-top: 10px; }
             .bcd-detailed .bcd-current {
@@ -1476,7 +1491,7 @@
         this.collapse.setAttribute('aria-label', 'Collapse downloader');
         buttonContent(this.collapse, null, 'collapse');
         this.collapse.addEventListener('click', () => this.setCollapsed(this.root.dataset['collapsed'] !== 'true'));
-        controls.append(this.collapse, this.action, this.stop);
+        controls.append(this.action, this.stop, this.collapse);
         this.panel = document.createElement('div');
         this.panel.className = 'bcd-panel';
         this.summary = document.createElement('div');
@@ -1532,6 +1547,7 @@
           completed: 0,
           current: ['Preparing downloads'],
           failed: 0,
+          failures: [],
           progress: 0,
           queued: total,
           skipped: 0,
@@ -1567,7 +1583,20 @@
           this.action.disabled = false;
         }
         if (this.showDetails) {
-          this.current.textContent = snapshot.total === 0 ? 'No album or track releases were found on this page.' : `${snapshot.completed} saved, ${snapshot.skipped} skipped, ${snapshot.failed} failed.`;
+          const result = snapshot.total === 0 ? 'No album or track releases were found on this page.' : `${snapshot.completed} saved, ${snapshot.skipped} skipped, ${snapshot.failed} failed.`;
+          this.current.replaceChildren(document.createTextNode(result));
+          if (snapshot.failures.length > 0) {
+            this.current.append(document.createTextNode('\nFailed releases:'));
+            for (const failure of snapshot.failures) {
+              const link = document.createElement('a');
+              link.href = failure.url;
+              link.target = '_blank';
+              link.rel = 'noopener noreferrer';
+              link.textContent = failure.title;
+              link.title = `${failure.title}: ${failure.detail}`;
+              this.current.append(link);
+            }
+          }
         }
       }
       cancel(snapshot) {
@@ -1613,6 +1642,7 @@
         completed: 0,
         current: [],
         failed: 0,
+        failures: [],
         progress: 0,
         queued: tasks.length,
         skipped: 0,
@@ -1639,8 +1669,13 @@
           itemProgress.set(index, 0);
           statuses.set(index, `${task.title}: loading release page`);
           render();
+          let failureTask = task;
           try {
             const release = currentRelease && tasks.length === 1 && task.url === currentRelease.url ? currentRelease : await fetchRelease(task.url, signal);
+            failureTask = {
+              title: release.title,
+              url: release.url
+            };
             const report = (message, progress) => {
               statuses.set(index, `${release.title}: ${message}`);
               if (progress !== undefined) {
@@ -1659,8 +1694,13 @@
             if (signal.aborted) {
               statuses.set(index, `${task.title}: stopped`);
             } else {
+              const detail = errorMessage(error);
               snapshot.failed += 1;
-              statuses.set(index, `${task.title}: ${errorMessage(error)}`);
+              snapshot.failures.push({
+                ...failureTask,
+                detail
+              });
+              statuses.set(index, `${failureTask.title}: ${detail}`);
               console.error('[Bandcamp Collection Downloader]', task.url, error);
             }
           } finally {
@@ -1717,6 +1757,9 @@
       const unavailable = currentRelease !== null && classifyRelease(currentRelease) === 'unavailable';
       let ui;
       ui = new ProgressUi(pageKind === 'discography' ? 'Download All' : 'Download', pageKind === 'discography', () => {
+        if (pageKind === 'discography') {
+          tasks = discoverReleases(document, window.location.href);
+        }
         controller = new AbortController();
         ui.start(tasks.length);
         void runQueue(tasks, ui, currentRelease, controller.signal);
