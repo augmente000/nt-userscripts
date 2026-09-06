@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MusicBrainz Release Add Enhancements
-// @description  Adds label autofill, Guess Case normalization, and duplicate release-group controls to the MusicBrainz release add page.
-// @version      2026.08.26.2
+// @description  Adds label and catalog-number autofill, Guess Case normalization, and duplicate release-group controls to the MusicBrainz release add page.
+// @version      2026.09.06.1
 // @author       
 // @namespace    https://github.com/augmente000/nt-userscripts
 // @downloadURL  https://raw.githubusercontent.com/augmente000/nt-userscripts/dist/musicbrainz-release-add-enhancements.user.js
@@ -14,6 +14,117 @@
 
 (function () {
     'use strict';
+
+    function setInputValue(input, value) {
+      input.value = value;
+      input.dispatchEvent(new InputEvent('input', {
+        bubbles: true,
+        data: value,
+        inputType: 'insertFromPaste'
+      }));
+    }
+
+    const POLL_INTERVAL_MS = 500;
+    function annotationText() {
+      return document.querySelector('#annotation')?.value;
+    }
+    function executePattern(pattern, value) {
+      pattern.lastIndex = 0;
+      return pattern.exec(value);
+    }
+    function labelIdForValue(value, labels) {
+      const normalizedValue = value.toLowerCase();
+      for (const label of labels) {
+        if (value === label.id || label.names.some(name => name.toLowerCase() === normalizedValue)) {
+          return label.id;
+        }
+      }
+      return undefined;
+    }
+    function findLabel(options) {
+      const labelInputs = Array.from(document.querySelectorAll('input[id^="label-"]'));
+      let labelInput;
+      let labelId;
+      for (const input of labelInputs) {
+        const matchingLabelId = labelIdForValue(input.value.trim(), options.labels);
+        if (matchingLabelId) {
+          labelInput = input;
+          labelId = matchingLabelId;
+          break;
+        }
+      }
+      if (!labelInput) {
+        labelInput = labelInputs.find(input => !input.value.trim());
+        labelId = options.defaultLabelId;
+      }
+      if (!labelInput || !labelId) {
+        return undefined;
+      }
+      const row = labelInput.closest('tr');
+      const catalogNumberInput = row?.querySelector('input[id^="catno-"]');
+      if (!row || !catalogNumberInput) {
+        return undefined;
+      }
+      if (labelInput.value.trim() !== labelId) {
+        setInputValue(labelInput, labelId);
+      }
+      return {
+        catalogNumberInput,
+        row
+      };
+    }
+    function initLabelAutofill(options) {
+      let addedLabel;
+      let pollInterval;
+      const annotationInputListener = event => {
+        if (event.target instanceof HTMLTextAreaElement && event.target.id === 'annotation') {
+          update();
+        }
+      };
+      const stopWatching = () => {
+        document.removeEventListener('input', annotationInputListener, true);
+        if (pollInterval !== undefined) {
+          window.clearInterval(pollInterval);
+          pollInterval = undefined;
+        }
+      };
+      const update = () => {
+        const annotation = annotationText();
+        if (!annotation || !executePattern(options.annotationPattern, annotation)) {
+          return;
+        }
+        if (!addedLabel?.row.isConnected) {
+          addedLabel = findLabel(options);
+          if (!addedLabel) {
+            return;
+          }
+        }
+        const catalogNumber = executePattern(options.catalogNumberPattern, annotation)?.[1]?.trim();
+        if (!catalogNumber) {
+          return;
+        }
+        if (!addedLabel.catalogNumberInput.value.trim()) {
+          setInputValue(addedLabel.catalogNumberInput, catalogNumber);
+        }
+        stopWatching();
+      };
+      document.addEventListener('input', annotationInputListener, true);
+      pollInterval = window.setInterval(update, POLL_INTERVAL_MS);
+      update();
+    }
+
+    const ATTENUATION_CIRCUIT_MBID = 'd3f44125-8caa-42ff-bcaf-477a9b4a1258';
+    function initAttenuationCircuitAutofill() {
+      initLabelAutofill({
+        annotationPattern: /\battenuation\s+circuit\b/iu,
+        catalogNumberPattern: /\battenuation\s+circuit\s*[°•]\s*([^°•\r\n]+?)\s*[°•]/iu,
+        defaultLabelId: ATTENUATION_CIRCUIT_MBID,
+        labels: [{
+          id: ATTENUATION_CIRCUIT_MBID,
+          names: ['attenuation circuit']
+        }]
+      });
+    }
 
     const CONTROL_ROW_CLASS = 'nt-duplicate-release-groups-control';
     const DUPLICATE_LIST_SELECTOR = '.duplicate-release-groups-list';
@@ -143,15 +254,6 @@
       });
     }
 
-    function setInputValue(input, value) {
-      input.value = value;
-      input.dispatchEvent(new InputEvent('input', {
-        bubbles: true,
-        data: value,
-        inputType: 'insertFromPaste'
-      }));
-    }
-
     const GUESS_CASE_BUTTON_SELECTOR = 'button.guesscase-title, #guess-case-button, button[data-bind*="guessMediumCase"]';
     const TITLE_INPUT_SELECTOR = 'input.track-name, input[id^="medium-title-"]';
     const bracketOnlyPreviewValues = new WeakMap();
@@ -252,95 +354,21 @@
       });
     }
 
-    const CATALOG_NUMBER_PATTERN = /\bMilieu\s+Music\s+number\s+([^\s,.;:!?()[\]{}]+)/iu;
     const MILIEU_MUSIC_MBID = '30166e7a-d7ca-4b32-9e22-2228958db577';
     const MILIEU_MUSIC_DIGITAL_MBID = '51e69c25-113c-4052-b430-837f9eebb3ac';
-    const MILIEU_MUSIC_PATTERN = /\bMilieu\s+Music\b/iu;
-    const POLL_INTERVAL_MS = 500;
-    function annotationText() {
-      return document.querySelector('#annotation')?.value;
-    }
-    function extractCatalogNumber(annotation) {
-      return CATALOG_NUMBER_PATTERN.exec(annotation)?.[1];
-    }
-    function findMilieuMusicLabel() {
-      const labelInput = document.querySelector('input[id^="label-"]');
-      if (!labelInput) {
-        return undefined;
-      }
-      const labelValue = labelInput.value.trim();
-      let labelMbid;
-      if (labelValue === 'Milieu Music') {
-        labelMbid = MILIEU_MUSIC_MBID;
-      } else if (labelValue === 'Milieu Music Digital') {
-        labelMbid = MILIEU_MUSIC_DIGITAL_MBID;
-      } else if (!labelValue) {
-        labelMbid = MILIEU_MUSIC_DIGITAL_MBID;
-      } else {
-        return undefined;
-      }
-      const row = labelInput.closest('tr');
-      const catalogNumberInput = row?.querySelector('input[id^="catno-"]');
-      if (!row || !catalogNumberInput) {
-        return undefined;
-      }
-      setInputValue(labelInput, labelMbid);
-      return {
-        catalogNumberInput,
-        row
-      };
-    }
     function initMilieuMusicAutofill() {
-      let addedLabel;
-      let catalogNumberHandled = false;
-      let labelInsertionHandled = false;
-      let pollInterval;
-      const annotationInputListener = event => {
-        if (event.target instanceof HTMLTextAreaElement && event.target.id === 'annotation') {
-          update();
-        }
-      };
-      const stopWatching = () => {
-        document.removeEventListener('input', annotationInputListener, true);
-        if (pollInterval !== undefined) {
-          window.clearInterval(pollInterval);
-          pollInterval = undefined;
-        }
-      };
-      const update = () => {
-        const annotation = annotationText();
-        if (!annotation || !MILIEU_MUSIC_PATTERN.test(annotation)) {
-          return;
-        }
-        if (!labelInsertionHandled) {
-          const label = findMilieuMusicLabel();
-          if (!label) {
-            return;
-          }
-          addedLabel = label;
-          labelInsertionHandled = true;
-        }
-        if (!addedLabel?.row.isConnected) {
-          stopWatching();
-          return;
-        }
-        if (catalogNumberHandled) {
-          stopWatching();
-          return;
-        }
-        const catalogNumber = extractCatalogNumber(annotation);
-        if (!catalogNumber) {
-          return;
-        }
-        if (!addedLabel.catalogNumberInput.value.trim()) {
-          setInputValue(addedLabel.catalogNumberInput, catalogNumber);
-        }
-        catalogNumberHandled = true;
-        stopWatching();
-      };
-      document.addEventListener('input', annotationInputListener, true);
-      pollInterval = window.setInterval(update, POLL_INTERVAL_MS);
-      update();
+      initLabelAutofill({
+        annotationPattern: /\bMilieu\s+Music\b/iu,
+        catalogNumberPattern: /\bMilieu\s+Music\s+number\s+([^\s,.;:!?()[\]{}]+)/iu,
+        defaultLabelId: MILIEU_MUSIC_DIGITAL_MBID,
+        labels: [{
+          id: MILIEU_MUSIC_MBID,
+          names: ['Milieu Music']
+        }, {
+          id: MILIEU_MUSIC_DIGITAL_MBID,
+          names: ['Milieu Music Digital']
+        }]
+      });
     }
 
     function isReleaseAddPage() {
@@ -351,6 +379,7 @@
         return;
       }
       initMilieuMusicAutofill();
+      initAttenuationCircuitAutofill();
       initDuplicateReleaseGroupsToggle();
       initGuessCaseBracketNormalization();
     }
