@@ -1,3 +1,4 @@
+import { initAttenuationCircuitAutofill } from './features/attenuation-circuit';
 import { initDuplicateReleaseGroupsToggle } from './features/duplicate-release-groups';
 import { initGuessCaseBracketNormalization } from './features/guess-case-brackets';
 import { initMilieuMusicAutofill } from './features/milieu-music';
@@ -12,6 +13,7 @@ function init(): void {
     }
 
     initMilieuMusicAutofill();
+    initAttenuationCircuitAutofill();
     initDuplicateReleaseGroupsToggle();
     initGuessCaseBracketNormalization();
 }

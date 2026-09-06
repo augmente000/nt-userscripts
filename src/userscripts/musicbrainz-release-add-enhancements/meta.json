@@ -1,6 +1,6 @@
 {
     "name": "MusicBrainz Release Add Enhancements",
-    "description": "Adds label autofill, Guess Case normalization, and duplicate release-group controls to the MusicBrainz release add page.",
+    "description": "Adds label and catalog-number autofill, Guess Case normalization, and duplicate release-group controls to the MusicBrainz release add page.",
     "version": "2026.08.26.2",
     "author": "",
     "namespace": "https://github.com/augmente000/nt-userscripts",
