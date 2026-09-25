@@ -2,6 +2,10 @@
 
 declare const unsafeWindow: Window;
 
+declare function GM_getValue<TValue>(name: string, defaultValue: TValue): TValue;
+declare function GM_setValue(name: string, value: string): void;
+declare function GM_registerMenuCommand(name: string, callback: () => void): void;
+
 interface GmRequestResponse {
     finalUrl: string;
     lengthComputable: boolean;

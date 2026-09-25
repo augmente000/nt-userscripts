@@ -1,0 +1,14 @@
+{
+    "name": "Release Collection Checker",
+    "description": "Marks releases on supported music sites that are already present in your personal collection.",
+    "version": "2026.09.25.3",
+    "author": "",
+    "namespace": "https://github.com/augmente000/nt-userscripts",
+    "downloadURL": "https://raw.githubusercontent.com/augmente000/nt-userscripts/dist/release-collection-checker.user.js",
+    "updateURL": "https://raw.githubusercontent.com/augmente000/nt-userscripts/dist/release-collection-checker.user.js",
+    "match": ["https://band.codes/*"],
+    "connect": ["api.new-team.me"],
+    "grant": ["GM_getValue", "GM_setValue", "GM_registerMenuCommand", "GM_xmlhttpRequest"],
+    "runAt": "document-idle",
+    "icon": "https://band.codes/favicon.ico"
+}
