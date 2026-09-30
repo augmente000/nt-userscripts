@@ -45,6 +45,10 @@ interface CmsLookupResult {
     release: CmsRelease | undefined;
 }
 
+interface CachedCmsLookup {
+    releaseId: string;
+}
+
 const MUSICBRAINZ_API_ROOT = 'https://musicbrainz.org/ws/2/release';
 const CMS_API_ROOT = 'https://api.new-team.me/api/v1/releases';
 const CMS_ROOT = 'https://cms.new-team.me';
@@ -54,6 +58,7 @@ const CMS_LOGO_URL = 'https://raw.githubusercontent.com/augmente000/nt-userscrip
 const BUSY_ERROR = 'The MusicBrainz web server is currently busy. Please try again later.';
 const BUSY_RETRY_DELAYS_MS = [2_000, 4_000, 8_000, 16_000] as const;
 const CACHE_PREFIX = 'nt-navidrome-musicbrainz-release:v3:';
+const CMS_CACHE_PREFIX = 'nt-navidrome-cms-release:v1:';
 const CONTAINER_CLASS = 'mb-external-links';
 const MUSICBRAINZ_RELEASE_PATTERN =
     /^\/release\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(?:\/|$)/iu;
@@ -65,6 +70,10 @@ class MusicBrainzBusyError extends Error {}
 
 function cacheKey(releaseId: string): string {
     return `${CACHE_PREFIX}${releaseId}`;
+}
+
+function cmsCacheKey(releaseId: string): string {
+    return `${CMS_CACHE_PREFIX}${releaseId}`;
 }
 
 function optionalCachedText(value: unknown): string | undefined {
@@ -123,6 +132,50 @@ function cacheRelease(releaseId: string, release: ReleaseDetails): void {
         localStorage.setItem(cacheKey(releaseId), JSON.stringify(cached));
     } catch (error) {
         console.warn('[Navidrome MusicBrainz Links] Could not cache the release links.', error);
+    }
+}
+
+function readCachedCmsLookup(releaseId: string): CmsLookupResult | undefined {
+    const key = cmsCacheKey(releaseId);
+
+    try {
+        const stored = localStorage.getItem(key);
+        if (!stored) {
+            return undefined;
+        }
+
+        const parsed: unknown = JSON.parse(stored);
+        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+            localStorage.removeItem(key);
+            return undefined;
+        }
+
+        const cachedReleaseId = (parsed as Partial<CachedCmsLookup>).releaseId;
+        if (typeof cachedReleaseId !== 'string') {
+            localStorage.removeItem(key);
+            return undefined;
+        }
+
+        return {
+            checked: true,
+            release: { id: cachedReleaseId },
+        };
+    } catch {
+        try {
+            localStorage.removeItem(key);
+        } catch {
+            // A request can still be made when storage is unavailable.
+        }
+        return undefined;
+    }
+}
+
+function cacheCmsLookup(releaseId: string, release: CmsRelease): void {
+    try {
+        const cached: CachedCmsLookup = { releaseId: release.id };
+        localStorage.setItem(cmsCacheKey(releaseId), JSON.stringify(cached));
+    } catch (error) {
+        console.warn('[Navidrome MusicBrainz Links] Could not cache the CMS release.', error);
     }
 }
 
@@ -255,7 +308,14 @@ function getCmsToken(): string | undefined {
     return trimmedToken;
 }
 
-function getCmsRelease(releaseId: string): Promise<CmsLookupResult> {
+function getCmsRelease(releaseId: string, forceRefresh = false): Promise<CmsLookupResult> {
+    if (!forceRefresh) {
+        const cached = readCachedCmsLookup(releaseId);
+        if (cached) {
+            return Promise.resolve(cached);
+        }
+    }
+
     const token = getCmsToken();
     if (!token) {
         return Promise.resolve({ checked: false, release: undefined });
@@ -269,7 +329,12 @@ function getCmsRelease(releaseId: string): Promise<CmsLookupResult> {
     let request: Promise<CmsLookupResult>;
     request = requestCmsRelease(releaseId, token)
         .then(parseCmsReleaseResponse)
-        .then(release => ({ checked: true, release }))
+        .then(release => {
+            if (release) {
+                cacheCmsLookup(releaseId, release);
+            }
+            return { checked: true, release };
+        })
         .finally(() => {
             if (cmsInFlightRequests.get(releaseId) === request) {
                 cmsInFlightRequests.delete(releaseId);
@@ -588,7 +653,7 @@ function createCmsControls(
         refresh.dataset['loading'] = '';
 
         try {
-            const refreshedLookup = await getCmsRelease(releaseId);
+            const refreshedLookup = await getCmsRelease(releaseId, true);
             if (!refreshedLookup.checked) {
                 throw new Error('The CMS lookup requires an API token.');
             }
