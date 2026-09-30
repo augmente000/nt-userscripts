@@ -1,32 +1,45 @@
 // ==UserScript==
 // @name         Navidrome MusicBrainz Release Links
-// @description  Shows a MusicBrainz release's external URL relationships on Navidrome album pages.
-// @version      2026.08.11.1
+// @description  Shows MusicBrainz external relationships and New Team CMS status/import links on Navidrome album pages.
+// @version      2026.09.30.1
 // @author       
-// @namespace    https://update.greasyfork.org/scripts/590798
-// @downloadURL  https://update.greasyfork.org/scripts/590798/navidrome-musicbrainz-links.user.js
-// @updateURL    https://update.greasyfork.org/scripts/590798/navidrome-musicbrainz-links.user.js
+// @namespace    https://github.com/augmente000/nt-userscripts
+// @downloadURL  https://raw.githubusercontent.com/augmente000/nt-userscripts/dist/navidrome-musicbrainz-links.user.js
+// @updateURL    https://raw.githubusercontent.com/augmente000/nt-userscripts/dist/navidrome-musicbrainz-links.user.js
 // @match        http://jrmnas.local:4533/app/*
 // @match        https://jrmnas.local:4533/app/*
 // @connect      musicbrainz.org
+// @connect      api.new-team.me
 // @grant        GM_xmlhttpRequest
+// @grant        GM_getValue
+// @grant        GM_setValue
 // @run-at       document-idle
-// @icon         https://musicbrainz.org/static/images/favicons/favicon-32x32.png
+// @icon         https://raw.githubusercontent.com/augmente000/browser-userscripts/master/src/assets/cms-logo.svg
 // ==/UserScript==
 
 (function () {
     'use strict';
 
-    const API_ROOT = 'https://musicbrainz.org/ws/2/release';
+    const MUSICBRAINZ_API_ROOT = 'https://musicbrainz.org/ws/2/release';
+    const CMS_API_ROOT = 'https://api.new-team.me/api/v1/releases';
+    const CMS_ROOT = 'https://cms.new-team.me';
+    const CMS_SEED_URL = `${CMS_ROOT}/api/seed`;
+    const CMS_TOKEN_STORAGE_KEY = 'new-team-cms-api-token';
+    const CMS_LOGO_URL = 'https://raw.githubusercontent.com/augmente000/browser-userscripts/master/src/assets/cms-logo.svg';
     const BUSY_ERROR = 'The MusicBrainz web server is currently busy. Please try again later.';
     const BUSY_RETRY_DELAYS_MS = [2_000, 4_000, 8_000, 16_000];
-    const CACHE_PREFIX = 'nt-navidrome-musicbrainz-release:v1:';
-    const CONTAINER_CLASS = 'nt-mb-external-links';
+    const CACHE_PREFIX = 'nt-navidrome-musicbrainz-release:v3:';
+    const CONTAINER_CLASS = 'mb-external-links';
     const MUSICBRAINZ_RELEASE_PATTERN = /^\/release\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(?:\/|$)/iu;
     const inFlightRequests = new Map();
+    const cmsInFlightRequests = new Map();
+    let cmsTokenSetupDismissed = false;
     class MusicBrainzBusyError extends Error {}
     function cacheKey(releaseId) {
       return `${CACHE_PREFIX}${releaseId}`;
+    }
+    function optionalCachedText(value) {
+      return typeof value === 'string' && value ? value : undefined;
     }
     function readCachedRelease(releaseId) {
       const key = cacheKey(releaseId);
@@ -40,7 +53,23 @@
           localStorage.removeItem(key);
           return undefined;
         }
-        return parsed;
+        const cached = parsed;
+        if (!Array.isArray(cached.urls) || !cached.urls.every(url => typeof url === 'string')) {
+          localStorage.removeItem(key);
+          return undefined;
+        }
+        const relations = cached.urls.flatMap(resource => {
+          const url = externalUrl(resource);
+          return url ? [{
+            url
+          }] : [];
+        });
+        return {
+          artistName: optionalCachedText(cached.artistName),
+          labelName: optionalCachedText(cached.labelName),
+          relations,
+          releaseName: optionalCachedText(cached.releaseName)
+        };
       } catch {
         try {
           localStorage.removeItem(key);
@@ -52,17 +81,25 @@
     }
     function cacheRelease(releaseId, release) {
       try {
-        localStorage.setItem(cacheKey(releaseId), JSON.stringify(release));
+        const cached = {
+          artistName: release.artistName,
+          labelName: release.labelName,
+          releaseName: release.releaseName,
+          urls: release.relations.map(relation => relation.url.href)
+        };
+        localStorage.setItem(cacheKey(releaseId), JSON.stringify(cached));
       } catch (error) {
-        console.warn('[Navidrome MusicBrainz Links] Could not cache the release response.', error);
+        console.warn('[Navidrome MusicBrainz Links] Could not cache the release links.', error);
       }
     }
     function requestRelease(releaseId) {
-      const url = `${API_ROOT}/${releaseId}?fmt=json&inc=url-rels`;
+      const url = new URL(`${MUSICBRAINZ_API_ROOT}/${releaseId}`);
+      url.searchParams.set('fmt', 'json');
+      url.searchParams.set('inc', 'artist-credits+labels+url-rels');
       return new Promise((resolve, reject) => {
         GM_xmlhttpRequest({
           method: 'GET',
-          url,
+          url: url.href,
           headers: {
             Accept: 'application/json'
           },
@@ -83,6 +120,117 @@
           ontimeout: () => reject(new Error('The MusicBrainz request timed out.'))
         });
       });
+    }
+    function requestCmsRelease(releaseId, token) {
+      const url = new URL(CMS_API_ROOT);
+      url.searchParams.set('musicbrainzId', releaseId);
+      url.searchParams.set('limit', '1');
+      return new Promise((resolve, reject) => {
+        GM_xmlhttpRequest({
+          method: 'GET',
+          url: url.href,
+          headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          responseType: 'text',
+          timeout: 30_000,
+          onload: response => {
+            if (typeof response.responseText !== 'string') {
+              reject(new Error('The CMS API returned an invalid response body.'));
+              return;
+            }
+            resolve({
+              body: response.responseText,
+              status: response.status
+            });
+          },
+          onabort: () => reject(new Error('The CMS API request was aborted.')),
+          onerror: response => reject(new Error(`The CMS API request failed (HTTP ${response.status || 'unknown'}).`)),
+          ontimeout: () => reject(new Error('The CMS API request timed out.'))
+        });
+      });
+    }
+    function releaseRecords(value) {
+      if (Array.isArray(value)) {
+        return value.filter(item => typeof item === 'object' && item !== null && !Array.isArray(item));
+      }
+      if (typeof value !== 'object' || value === null) {
+        return [];
+      }
+      const record = value;
+      if (typeof record['id'] === 'string' || typeof record['id'] === 'number') {
+        return [record];
+      }
+      for (const key of ['data', 'items', 'results', 'releases']) {
+        const records = releaseRecords(record[key]);
+        if (records.length > 0) {
+          return records;
+        }
+      }
+      return [];
+    }
+    function parseCmsReleaseResponse(response) {
+      let parsed;
+      try {
+        parsed = JSON.parse(response.body);
+      } catch {
+        throw new Error(`The CMS API returned invalid JSON (HTTP ${response.status}).`);
+      }
+      if (response.status < 200 || response.status >= 300) {
+        throw new Error(`The CMS API returned HTTP ${response.status}.`);
+      }
+      const release = releaseRecords(parsed)[0];
+      const id = release?.['id'];
+      if (typeof id !== 'string' && typeof id !== 'number') {
+        return undefined;
+      }
+      return {
+        id: String(id)
+      };
+    }
+    function getCmsToken() {
+      const storedToken = GM_getValue(CMS_TOKEN_STORAGE_KEY, '').trim();
+      if (storedToken || cmsTokenSetupDismissed) {
+        return storedToken || undefined;
+      }
+      const token = window.prompt('Enter the New Team CMS API token:');
+      if (token === null) {
+        cmsTokenSetupDismissed = true;
+        return undefined;
+      }
+      const trimmedToken = token.trim();
+      if (!trimmedToken) {
+        window.alert('A New Team CMS API token is required. The token was not saved.');
+        cmsTokenSetupDismissed = true;
+        return undefined;
+      }
+      GM_setValue(CMS_TOKEN_STORAGE_KEY, trimmedToken);
+      return trimmedToken;
+    }
+    function getCmsRelease(releaseId) {
+      const token = getCmsToken();
+      if (!token) {
+        return Promise.resolve({
+          checked: false,
+          release: undefined
+        });
+      }
+      const activeRequest = cmsInFlightRequests.get(releaseId);
+      if (activeRequest) {
+        return activeRequest;
+      }
+      let request;
+      request = requestCmsRelease(releaseId, token).then(parseCmsReleaseResponse).then(release => ({
+        checked: true,
+        release
+      })).finally(() => {
+        if (cmsInFlightRequests.get(releaseId) === request) {
+          cmsInFlightRequests.delete(releaseId);
+        }
+      });
+      cmsInFlightRequests.set(releaseId, request);
+      return request;
     }
     function parseReleaseResponse(response) {
       let parsed;
@@ -110,6 +258,61 @@
     function wait(milliseconds) {
       return new Promise(resolve => setTimeout(resolve, milliseconds));
     }
+    function nonEmptyText(value) {
+      if (typeof value !== 'string') {
+        return undefined;
+      }
+      const trimmed = value.trim();
+      return trimmed || undefined;
+    }
+    function artistCreditName(value) {
+      if (!Array.isArray(value)) {
+        return undefined;
+      }
+      let name = '';
+      for (const candidate of value) {
+        if (typeof candidate !== 'object' || candidate === null || Array.isArray(candidate)) {
+          continue;
+        }
+        const credit = candidate;
+        const artist = credit['artist'];
+        const artistRecord = typeof artist === 'object' && artist !== null && !Array.isArray(artist) ? artist : undefined;
+        const creditName = nonEmptyText(credit['name']) ?? nonEmptyText(artistRecord?.['name']);
+        if (!creditName) {
+          continue;
+        }
+        name += creditName;
+        name += typeof credit['joinphrase'] === 'string' ? credit['joinphrase'] : '';
+      }
+      return nonEmptyText(name);
+    }
+    function firstLabelName(value) {
+      if (!Array.isArray(value)) {
+        return undefined;
+      }
+      for (const candidate of value) {
+        if (typeof candidate !== 'object' || candidate === null || Array.isArray(candidate)) {
+          continue;
+        }
+        const label = candidate['label'];
+        if (typeof label !== 'object' || label === null || Array.isArray(label)) {
+          continue;
+        }
+        const name = nonEmptyText(label['name']);
+        if (name) {
+          return name;
+        }
+      }
+      return undefined;
+    }
+    function releaseDetails(release) {
+      return {
+        artistName: artistCreditName(release['artist-credit']),
+        labelName: firstLabelName(release['label-info']),
+        relations: externalRelations(release),
+        releaseName: nonEmptyText(release.title)
+      };
+    }
     async function fetchRelease(releaseId) {
       const cached = readCachedRelease(releaseId);
       if (cached) {
@@ -118,8 +321,9 @@
       for (let attempt = 0;; attempt += 1) {
         try {
           const release = parseReleaseResponse(await requestRelease(releaseId));
-          cacheRelease(releaseId, release);
-          return release;
+          const details = releaseDetails(release);
+          cacheRelease(releaseId, details);
+          return details;
         } catch (error) {
           const retryDelay = BUSY_RETRY_DELAYS_MS[attempt];
           if (!(error instanceof MusicBrainzBusyError) || retryDelay === undefined) {
@@ -143,12 +347,12 @@
       const normalized = hostname.toLowerCase();
       return normalized === 'musicbrainz.org' || normalized.endsWith('.musicbrainz.org');
     }
-    function relationUrl(relation) {
-      if (typeof relation.url?.resource !== 'string') {
+    function externalUrl(resource) {
+      if (typeof resource !== 'string') {
         return undefined;
       }
       try {
-        const url = new URL(relation.url.resource);
+        const url = new URL(resource);
         if (url.protocol !== 'http:' && url.protocol !== 'https:' || isMusicBrainzHost(url.hostname)) {
           return undefined;
         }
@@ -156,6 +360,9 @@
       } catch {
         return undefined;
       }
+    }
+    function relationUrl(relation) {
+      return externalUrl(relation.url?.resource);
     }
     function externalRelations(release) {
       if (!Array.isArray(release.relations)) {
@@ -192,7 +399,7 @@
       const hostname = displayHostname(relation.url.hostname);
       const link = document.createElement('a');
       const image = document.createElement('img');
-      link.className = 'nt-mb-external-link';
+      link.className = 'mb-external-link';
       link.href = relation.url.href;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
@@ -206,14 +413,108 @@
       link.append(image);
       return link;
     }
-    function renderRelations(container, release) {
-      container.replaceChildren(...externalRelations(release).map(createRelationLink));
+    function cmsSeedUrl(releaseId, details) {
+      const url = new URL(CMS_SEED_URL);
+      url.searchParams.append('url', `https://musicbrainz.org/release/${releaseId}`);
+      for (const relation of details.relations) {
+        url.searchParams.append('url', relation.url.href);
+      }
+      if (details.artistName) {
+        url.searchParams.set('artistName', details.artistName);
+      }
+      if (details.releaseName) {
+        url.searchParams.set('releaseName', details.releaseName);
+      }
+      if (details.labelName) {
+        url.searchParams.set('label', details.labelName);
+      }
+      return url.href;
+    }
+    function createSvgIcon(paths) {
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', '0 0 24 24');
+      svg.setAttribute('aria-hidden', 'true');
+      for (const pathData of paths) {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', pathData);
+        svg.append(path);
+      }
+      return svg;
+    }
+    function createCmsLink(releaseId, details, release) {
+      const link = document.createElement('a');
+      const image = document.createElement('img');
+      const exists = release !== undefined;
+      link.className = `mb-external-link cms-release-link cms-release-${exists ? 'exists' : 'missing'}`;
+      link.href = exists ? `${CMS_ROOT}/releases/${encodeURIComponent(release.id)}` : cmsSeedUrl(releaseId, details);
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.title = exists ? 'Open in New Team CMS' : 'Import into New Team CMS';
+      link.setAttribute('aria-label', exists ? 'Open release in New Team CMS' : 'Import release into New Team CMS');
+      image.src = CMS_LOGO_URL;
+      image.alt = '';
+      image.width = 18;
+      image.height = 18;
+      link.append(image);
+      return link;
+    }
+    function createCmsUploadLink(releaseId, details) {
+      const link = document.createElement('a');
+      link.className = 'mb-external-link cms-upload-link';
+      link.href = cmsSeedUrl(releaseId, details);
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.title = 'Add missing links to this New Team CMS release';
+      link.setAttribute('aria-label', 'Add missing links to this New Team CMS release');
+      link.append(createSvgIcon(['M12 16V4m0 0-4 4m4-4 4 4', 'M5 15v4h14v-4']));
+      return link;
+    }
+    function createCmsControls(container, releaseId, details, lookup) {
+      const controls = document.createElement('span');
+      const refresh = document.createElement('button');
+      controls.className = 'cms-release-controls';
+      refresh.type = 'button';
+      refresh.className = 'cms-refresh';
+      refresh.title = 'Refresh New Team CMS status';
+      refresh.setAttribute('aria-label', 'Refresh New Team CMS status');
+      refresh.append(createSvgIcon(['M20 11a8 8 0 0 0-14.9-4M4 4v5h5', 'M4 13a8 8 0 0 0 14.9 4M20 20v-5h-5']));
+      refresh.addEventListener('click', async () => {
+        refresh.disabled = true;
+        refresh.dataset['loading'] = '';
+        try {
+          const refreshedLookup = await getCmsRelease(releaseId);
+          if (!refreshedLookup.checked) {
+            throw new Error('The CMS lookup requires an API token.');
+          }
+          if (controls.isConnected && container.isConnected && container.dataset['releaseId'] === releaseId) {
+            controls.replaceWith(createCmsControls(container, releaseId, details, refreshedLookup));
+          }
+        } catch (error) {
+          refresh.disabled = false;
+          delete refresh.dataset['loading'];
+          refresh.title = 'CMS refresh failed. Click to retry.';
+          console.error('[Navidrome MusicBrainz Links] Could not refresh CMS status.', error);
+        }
+      });
+      controls.append(createCmsLink(releaseId, details, lookup.release), refresh);
+      if (lookup.release) {
+        controls.append(createCmsUploadLink(releaseId, details));
+      }
+      return controls;
+    }
+    function renderRelations(container, relations) {
+      container.replaceChildren(...relations.map(createRelationLink));
       container.removeAttribute('aria-busy');
+    }
+    function renderCmsRelease(container, releaseId, details, lookup) {
+      if (lookup.checked) {
+        container.append(createCmsControls(container, releaseId, details, lookup));
+      }
     }
     function renderError(container, releaseId, error) {
       const retry = document.createElement('button');
       retry.type = 'button';
-      retry.className = 'nt-mb-retry';
+      retry.className = 'mb-retry';
       retry.textContent = '!';
       retry.title = 'Could not load MusicBrainz links. Click to retry.';
       retry.setAttribute('aria-label', 'Retry loading MusicBrainz links');
@@ -229,17 +530,30 @@
       console.error('[Navidrome MusicBrainz Links] Could not load release relationships.', error);
     }
     async function loadIntoContainer(container, releaseId) {
+      const cmsReleasePromise = getCmsRelease(releaseId).catch(error => {
+        console.error('[Navidrome MusicBrainz Links] Could not look up the CMS release.', error);
+        return {
+          checked: false,
+          release: undefined
+        };
+      });
+      let details;
       try {
-        const release = await getRelease(releaseId);
+        details = await getRelease(releaseId);
         if (!container.isConnected || container.dataset['releaseId'] !== releaseId) {
           return;
         }
         container.dataset['state'] = 'ready';
-        renderRelations(container, release);
+        renderRelations(container, details.relations);
       } catch (error) {
         if (container.isConnected && container.dataset['releaseId'] === releaseId) {
           renderError(container, releaseId, error);
         }
+        return;
+      }
+      const cmsRelease = await cmsReleasePromise;
+      if (container.isConnected && container.dataset['releaseId'] === releaseId) {
+        renderCmsRelease(container, releaseId, details, cmsRelease);
       }
     }
     function releaseIdFromLink(link) {
@@ -284,7 +598,7 @@
       }
     }
     function addStyles() {
-      if (document.querySelector('style[data-nt-mb-external-links]')) {
+      if (document.querySelector('style[data-mb-external-links]')) {
         return;
       }
       const style = document.createElement('style');
@@ -303,8 +617,8 @@
             text-align: center;
             opacity: 0.6;
         }
-        .nt-mb-external-link,
-        .nt-mb-retry {
+        .mb-external-link,
+        .mb-retry {
             box-sizing: content-box;
             display: inline-flex;
             width: 18px;
@@ -320,19 +634,83 @@
             line-height: 18px;
             text-decoration: none;
         }
-        .nt-mb-external-link:hover,
-        .nt-mb-external-link:focus-visible,
-        .nt-mb-retry:hover,
-        .nt-mb-retry:focus-visible {
+        .mb-external-link:hover,
+        .mb-external-link:focus-visible,
+        .mb-retry:hover,
+        .mb-retry:focus-visible {
             background: rgba(128, 128, 128, 0.18);
         }
-        .nt-mb-external-link img {
+        .cms-release-controls {
+            display: inline-flex;
+            align-items: center;
+            gap: 0;
+            padding: 1px;
+            border: 1px solid rgba(128, 128, 128, 0.35);
+            border-radius: 8px;
+            background: rgba(128, 128, 128, 0.08);
+        }
+        .cms-release-controls .mb-external-link {
+            padding: 4px;
+        }
+        .cms-release-link.cms-release-exists img {
+            border: 1px solid #fff;
+        }
+        .cms-release-link.cms-release-missing img {
+            border: 1px solid #d32f2f;
+        }
+        .mb-external-link img {
+            box-sizing: border-box;
             display: block;
             width: 18px;
             height: 18px;
             border-radius: 3px;
         }
-        .nt-mb-retry {
+        .cms-upload-link svg,
+        .cms-refresh svg {
+            width: 18px;
+            height: 18px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .cms-refresh {
+            box-sizing: border-box;
+            display: inline-flex;
+            width: 18px;
+            height: 18px;
+            align-items: center;
+            justify-content: center;
+            padding: 2px;
+            border: 0;
+            border-radius: 50%;
+            background: transparent;
+            color: inherit;
+            cursor: pointer;
+            opacity: 0.65;
+        }
+        .cms-refresh:hover,
+        .cms-refresh:focus-visible {
+            background: rgba(128, 128, 128, 0.18);
+            opacity: 1;
+        }
+        .cms-refresh:disabled {
+            cursor: wait;
+        }
+        .cms-refresh svg {
+            width: 14px;
+            height: 14px;
+        }
+        .cms-refresh[data-loading] svg {
+            animation: cms-refresh-spin 0.8s linear infinite;
+        }
+        @keyframes cms-refresh-spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+        .mb-retry {
             font: 700 14px/18px sans-serif;
         }
     `;
@@ -352,6 +730,8 @@
           scan();
         });
       };
+
+      // Watch subtree and href changes for client-side navigation, coalescing related scans.
       new MutationObserver(scheduleScan).observe(document.body, {
         attributeFilter: ['href'],
         attributes: true,
