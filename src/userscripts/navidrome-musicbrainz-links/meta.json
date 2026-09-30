@@ -1,6 +1,6 @@
 {
     "name": "Navidrome MusicBrainz Release Links",
-    "description": "Shows MusicBrainz external relationships and matching CMS releases on Navidrome album pages.",
+    "description": "Shows MusicBrainz external relationships and New Team CMS status/import links on Navidrome album pages.",
     "version": "2026.09.28.3",
     "author": "",
     "license": "MIT",
