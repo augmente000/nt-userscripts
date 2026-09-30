@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Navidrome MusicBrainz Release Links
 // @description  Shows MusicBrainz external relationships and New Team CMS status/import links on Navidrome album pages.
-// @version      2026.09.30.1
+// @version      2026.09.30.2
 // @author       
 // @namespace    https://github.com/augmente000/nt-userscripts
 // @downloadURL  https://raw.githubusercontent.com/augmente000/nt-userscripts/dist/navidrome-musicbrainz-links.user.js
@@ -14,7 +14,7 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @run-at       document-idle
-// @icon         https://raw.githubusercontent.com/augmente000/browser-userscripts/master/src/assets/cms-logo.svg
+// @icon         https://raw.githubusercontent.com/augmente000/nt-userscripts/master/src/assets/cms-logo.svg
 // ==/UserScript==
 
 (function () {
@@ -25,7 +25,7 @@
     const CMS_ROOT = 'https://cms.new-team.me';
     const CMS_SEED_URL = `${CMS_ROOT}/api/seed`;
     const CMS_TOKEN_STORAGE_KEY = 'new-team-cms-api-token';
-    const CMS_LOGO_URL = 'https://raw.githubusercontent.com/augmente000/browser-userscripts/master/src/assets/cms-logo.svg';
+    const CMS_LOGO_URL = 'https://raw.githubusercontent.com/augmente000/nt-userscripts/master/src/assets/cms-logo.svg';
     const BUSY_ERROR = 'The MusicBrainz web server is currently busy. Please try again later.';
     const BUSY_RETRY_DELAYS_MS = [2_000, 4_000, 8_000, 16_000];
     const CACHE_PREFIX = 'nt-navidrome-musicbrainz-release:v3:';
