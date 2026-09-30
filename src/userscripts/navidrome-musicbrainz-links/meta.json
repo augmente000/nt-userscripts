@@ -20,5 +20,5 @@
         "GM_setValue"
     ],
     "runAt": "document-idle",
-    "icon": "https://raw.githubusercontent.com/augmente000/browser-userscripts/master/src/assets/cms-logo.svg"
+    "icon": "https://raw.githubusercontent.com/augmente000/nt-userscripts/master/src/assets/cms-logo.svg"
 }
