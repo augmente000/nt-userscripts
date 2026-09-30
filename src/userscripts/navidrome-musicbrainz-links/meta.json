@@ -1,7 +1,7 @@
 {
     "name": "Navidrome MusicBrainz Release Links",
     "description": "Shows MusicBrainz external relationships and New Team CMS status/import links on Navidrome album pages.",
-    "version": "2026.09.30.2",
+    "version": "2026.09.30.3",
     "author": "",
     "namespace": "https://github.com/augmente000/nt-userscripts",
     "downloadURL": "https://raw.githubusercontent.com/augmente000/nt-userscripts/dist/navidrome-musicbrainz-links.user.js",
