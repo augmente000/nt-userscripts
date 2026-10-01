@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bandcamp Collection Downloader
-// @description  Downloads free and purchased Bandcamp releases as zipped FLAC, with batch progress on discography pages.
-// @version      2026.09.04.1
+// @description  Downloads free and purchased Bandcamp releases as zipped FLAC, with a 128 kbps streaming fallback on individual release pages.
+// @version      2026.10.01.1
 // @author       
 // @namespace    https://greasyfork.org/en/scripts/587730-bandcamp-collection-downloader
 // @downloadURL  https://update.greasyfork.org/scripts/587730/Bandcamp%20Collection%20Downloader.user.js
@@ -388,6 +388,19 @@
       if (!type || !Number.isInteger(currentId) || currentId <= 0 || !Number.isInteger(id) || id <= 0) {
         throw new Error('Bandcamp release data is missing an item identifier');
       }
+      const trackinfo = Array.isArray(parsed['trackinfo']) ? parsed['trackinfo'].flatMap((candidate, index) => {
+        if (!isRecord(candidate)) {
+          return [];
+        }
+        const rawFile = candidate['file'];
+        const file = isRecord(rawFile) ? Object.fromEntries(Object.entries(rawFile).filter(entry => typeof entry[1] === 'string' && Boolean(entry[1]))) : null;
+        const rawTrackNumber = Number(candidate['track_num']);
+        return [{
+          file,
+          title: typeof candidate['title'] === 'string' && candidate['title'].trim() ? candidate['title'].trim() : `Track ${index + 1}`,
+          trackNumber: Number.isInteger(rawTrackNumber) && rawTrackNumber > 0 ? rawTrackNumber : index + 1
+        }];
+      }) : [];
       return {
         current: {
           id: currentId,
@@ -399,6 +412,7 @@
         id,
         is_purchased: parsed['is_purchased'] === true,
         item_type: typeof parsed['item_type'] === 'string' ? parsed['item_type'] : type,
+        trackinfo,
         url: typeof parsed['url'] === 'string' ? parsed['url'] : window.location.href,
         ...(typeof parsed['art_id'] === 'number' ? {
           art_id: parsed['art_id']
@@ -539,6 +553,21 @@
     function parseReleaseDocument(document, pageUrl) {
       const tralbum = parseTralbum(document);
       const jsonLd = jsonLdDocuments(document);
+      const streamTracks = tralbum.trackinfo.flatMap(track => {
+        const url = track.file?.['mp3-128'];
+        if (!url) {
+          return [];
+        }
+        try {
+          return [{
+            title: track.title,
+            trackNumber: track.trackNumber,
+            url: normalizeReleaseUrl(url, pageUrl)
+          }];
+        } catch {
+          return [];
+        }
+      });
       return {
         artworkUrl: artworkUrl(document, tralbum, jsonLd),
         artist: jsonLd.map(artistName).find(value => Boolean(value)) ?? document.querySelector('meta[property="og:site_name"]')?.content ?? new URL(pageUrl).hostname.split('.')[0] ?? 'Bandcamp',
@@ -546,6 +575,7 @@
         fanId: fanId(document),
         isFree: jsonLd.some(data => releaseOfferPrice(data) === 0),
         paymentDownloadPage: paymentDownloadPage(document, pageUrl),
+        streamTracks,
         title: tralbum.current.title,
         tralbum,
         url: pageUrl
@@ -1102,6 +1132,48 @@
       }]);
       browserSave(zip, `${baseName}.zip`);
     }
+    function streamTrackFileName(release, track, width) {
+      const title = track.title.includes(' - ') ? track.title : `${release.artist} - ${track.title}`;
+      if (release.tralbum.current.type === 'track') {
+        return `${safeFileName(title)}.mp3`;
+      }
+      return `${String(track.trackNumber).padStart(width, '0')}. ${safeFileName(title)}.mp3`;
+    }
+    function hasMp3Signature(response) {
+      const bytes = new Uint8Array(response.body, 0, Math.min(response.body.byteLength, 3));
+      return bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33 || bytes[0] === 0xff && bytes[1] !== undefined && (bytes[1] & 0xe0) === 0xe0;
+    }
+    async function downloadStream(release, report, signal) {
+      const tracks = release.streamTracks;
+      if (tracks.length === 0) {
+        throw new Error('Bandcamp did not provide any streamable tracks');
+      }
+      const entries = [];
+      const workItems = tracks.length + (release.artworkUrl ? 1 : 0);
+      const trackNumberWidth = Math.max(2, String(Math.max(...tracks.map(track => track.trackNumber))).length);
+      for (const [index, track] of tracks.entries()) {
+        const label = tracks.length === 1 ? track.title : `${index + 1}/${tracks.length} ${track.title}`;
+        report(`Downloading 128 kbps MP3 · ${label}`, index / workItems);
+        const audio = await requestBinaryChunked(track.url, (loaded, total) => report(`Downloading 128 kbps MP3 · ${label} · ${percentage(loaded, total)}`, total ? (index + loaded / total) / workItems : undefined), signal);
+        if (!hasMp3Signature(audio)) {
+          throw new Error(`Bandcamp returned ${audio.contentType ?? 'an invalid payload'} instead of MP3`);
+        }
+        entries.push({
+          data: audio.body,
+          name: streamTrackFileName(release, track, trackNumberWidth)
+        });
+      }
+      if (release.artworkUrl) {
+        report('Downloading artwork', tracks.length / workItems);
+        const artwork = await requestBinaryChunked(release.artworkUrl, (loaded, total) => report('Downloading artwork', total ? (tracks.length + loaded / total) / workItems : undefined), signal);
+        entries.push({
+          data: artwork.body,
+          name: `front.${extensionFromArtwork(artwork, release.artworkUrl)}`
+        });
+      }
+      report('Packaging stream ZIP', 0.99);
+      browserSave(createZip(entries), `${releaseBaseName(release)} [MP3-128 stream].zip`);
+    }
     async function resolveDownload(release, inbox, report, signal) {
       const classification = classifyRelease(release);
       switch (classification) {
@@ -1132,7 +1204,7 @@
           return null;
       }
     }
-    async function downloadRelease(release, inbox, report, signal) {
+    async function downloadRelease(release, inbox, report, signal, allowStreamingFallback = false) {
       if (!release.tralbum.hasAudio) {
         return {
           detail: 'No downloadable audio',
@@ -1141,6 +1213,14 @@
       }
       const download = await resolveDownload(release, inbox, report, signal);
       if (!download) {
+        if (allowStreamingFallback && release.streamTracks.length > 0) {
+          await downloadStream(release, report, signal);
+          const unavailableCount = release.tralbum.trackinfo.length - release.streamTracks.length;
+          return {
+            detail: unavailableCount > 0 ? `Saved ${release.streamTracks.length} streamable track${release.streamTracks.length === 1 ? '' : 's'}; ${unavailableCount} unavailable` : 'Saved 128 kbps stream',
+            outcome: 'completed'
+          };
+        }
         return {
           detail: 'Not free and not in your collection',
           outcome: 'skipped'
@@ -1320,6 +1400,22 @@
                 color: #332307;
                 opacity: 1;
             }
+            .bcd-action.bcd-streaming {
+                border-color: rgba(255, 225, 139, .72);
+                background: linear-gradient(135deg, #ffe7a1 0%, #e5b94f 100%);
+                box-shadow:
+                    inset 0 1px 0 rgba(255, 255, 255, .66),
+                    0 5px 16px rgba(229, 185, 79, .2),
+                    0 0 18px rgba(255, 210, 92, .12);
+                color: #342400;
+            }
+            .bcd-action.bcd-streaming:hover:not(:disabled) {
+                background: linear-gradient(135deg, #ffefbd 0%, #edc967 100%);
+                box-shadow:
+                    inset 0 1px 0 rgba(255, 255, 255, .8),
+                    0 7px 20px rgba(229, 185, 79, .28),
+                    0 0 24px rgba(255, 210, 92, .18);
+            }
             .bcd-stop {
                 display: none;
                 border: 1px solid rgba(255, 146, 136, .38);
@@ -1446,6 +1542,10 @@
                 background: linear-gradient(135deg, #c9fadd 0%, var(--bcd-accent-strong) 100%);
                 box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7);
                 color: var(--bcd-accent-ink);
+            }
+            .bcd-root[data-streaming="true"][data-collapsed="true"] .bcd-collapse {
+                background: linear-gradient(135deg, #ffe7a1 0%, #e5b94f 100%);
+                color: #342400;
             }
             .bcd-root[data-collapsed="true"] .bcd-collapse .bcd-icon {
                 width: 18px;
@@ -1624,6 +1724,19 @@
         this.notice.dataset['visible'] = 'true';
         this.panel.dataset['visible'] = 'true';
       }
+      streamingWarning(streamableTracks, totalTracks) {
+        this.root.dataset['running'] = 'false';
+        this.root.dataset['streaming'] = 'true';
+        this.action.classList.add('bcd-streaming');
+        this.action.disabled = false;
+        this.setAction('Download MP3 stream', 'download');
+        this.stop.dataset['visible'] = 'false';
+        this.track.dataset['hidden'] = 'true';
+        const partial = totalTracks > streamableTracks;
+        this.notice.textContent = partial ? `Warning: only ${streamableTracks} of ${totalTracks} tracks are streamable. Saves available audio at Bandcamp's standard 128 kbps quality.` : "Warning: saves Bandcamp's streaming audio at standard 128 kbps quality, not the original download.";
+        this.notice.dataset['visible'] = 'true';
+        this.panel.dataset['visible'] = 'true';
+      }
     }
     function progressUiExists() {
       return document.getElementById(HOST_ID) !== null;
@@ -1633,7 +1746,7 @@
     function errorMessage(error) {
       return error instanceof Error ? error.message : String(error);
     }
-    async function runQueue(tasks, ui, currentRelease, signal) {
+    async function runQueue(tasks, ui, currentRelease, allowStreamingFallback, signal) {
       const inbox = new GuerrillaInbox(signal);
       const itemProgress = new Map();
       const statuses = new Map();
@@ -1671,7 +1784,8 @@
           render();
           let failureTask = task;
           try {
-            const release = currentRelease && tasks.length === 1 && task.url === currentRelease.url ? currentRelease : await fetchRelease(task.url, signal);
+            const refreshStreamUrls = allowStreamingFallback && currentRelease !== null && tasks.length === 1 && task.url === currentRelease.url && classifyRelease(currentRelease) === 'unavailable' && currentRelease.streamTracks.length > 0;
+            const release = currentRelease && tasks.length === 1 && task.url === currentRelease.url && !refreshStreamUrls ? currentRelease : await fetchRelease(task.url, signal);
             failureTask = {
               title: release.title,
               url: release.url
@@ -1683,7 +1797,7 @@
               }
               render();
             };
-            const result = await downloadRelease(release, inbox, report, signal);
+            const result = await downloadRelease(release, inbox, report, signal, allowStreamingFallback);
             if (result.outcome === 'completed') {
               snapshot.completed += 1;
             } else {
@@ -1762,9 +1876,11 @@
         }
         controller = new AbortController();
         ui.start(tasks.length);
-        void runQueue(tasks, ui, currentRelease, controller.signal);
+        void runQueue(tasks, ui, currentRelease, pageKind === 'release', controller.signal);
       }, () => controller?.abort());
-      if (unavailable) {
+      if (currentRelease && unavailable && currentRelease.streamTracks.length > 0) {
+        ui.streamingWarning(currentRelease.streamTracks.length, currentRelease.tralbum.trackinfo.length);
+      } else if (unavailable) {
         ui.unavailable("This paid release isn't available in your Bandcamp collection.");
       }
     }
