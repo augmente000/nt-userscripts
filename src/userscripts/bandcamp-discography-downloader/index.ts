@@ -14,6 +14,7 @@ async function runQueue(
     tasks: ReleaseTask[],
     ui: ProgressUi,
     currentRelease: ReleaseInfo | null,
+    allowStreamingFallback: boolean,
     signal: AbortSignal,
 ): Promise<void> {
     const inbox = new GuerrillaInbox(signal);
@@ -57,8 +58,15 @@ async function runQueue(
 
             let failureTask = task;
             try {
+                const refreshStreamUrls =
+                    allowStreamingFallback &&
+                    currentRelease !== null &&
+                    tasks.length === 1 &&
+                    task.url === currentRelease.url &&
+                    classifyRelease(currentRelease) === 'unavailable' &&
+                    currentRelease.streamTracks.length > 0;
                 const release =
-                    currentRelease && tasks.length === 1 && task.url === currentRelease.url
+                    currentRelease && tasks.length === 1 && task.url === currentRelease.url && !refreshStreamUrls
                         ? currentRelease
                         : await fetchRelease(task.url, signal);
                 failureTask = { title: release.title, url: release.url };
@@ -69,7 +77,7 @@ async function runQueue(
                     }
                     render();
                 };
-                const result = await downloadRelease(release, inbox, report, signal);
+                const result = await downloadRelease(release, inbox, report, signal, allowStreamingFallback);
                 if (result.outcome === 'completed') {
                     snapshot.completed += 1;
                 } else {
@@ -148,11 +156,13 @@ function main(): void {
             }
             controller = new AbortController();
             ui.start(tasks.length);
-            void runQueue(tasks, ui, currentRelease, controller.signal);
+            void runQueue(tasks, ui, currentRelease, pageKind === 'release', controller.signal);
         },
         () => controller?.abort(),
     );
-    if (unavailable) {
+    if (currentRelease && unavailable && currentRelease.streamTracks.length > 0) {
+        ui.streamingWarning(currentRelease.streamTracks.length, currentRelease.tralbum.trackinfo.length);
+    } else if (unavailable) {
         ui.unavailable("This paid release isn't available in your Bandcamp collection.");
     }
 }

@@ -170,6 +170,22 @@ export class ProgressUi {
                 color: #332307;
                 opacity: 1;
             }
+            .bcd-action.bcd-streaming {
+                border-color: rgba(255, 225, 139, .72);
+                background: linear-gradient(135deg, #ffe7a1 0%, #e5b94f 100%);
+                box-shadow:
+                    inset 0 1px 0 rgba(255, 255, 255, .66),
+                    0 5px 16px rgba(229, 185, 79, .2),
+                    0 0 18px rgba(255, 210, 92, .12);
+                color: #342400;
+            }
+            .bcd-action.bcd-streaming:hover:not(:disabled) {
+                background: linear-gradient(135deg, #ffefbd 0%, #edc967 100%);
+                box-shadow:
+                    inset 0 1px 0 rgba(255, 255, 255, .8),
+                    0 7px 20px rgba(229, 185, 79, .28),
+                    0 0 24px rgba(255, 210, 92, .18);
+            }
             .bcd-stop {
                 display: none;
                 border: 1px solid rgba(255, 146, 136, .38);
@@ -296,6 +312,10 @@ export class ProgressUi {
                 background: linear-gradient(135deg, #c9fadd 0%, var(--bcd-accent-strong) 100%);
                 box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7);
                 color: var(--bcd-accent-ink);
+            }
+            .bcd-root[data-streaming="true"][data-collapsed="true"] .bcd-collapse {
+                background: linear-gradient(135deg, #ffe7a1 0%, #e5b94f 100%);
+                color: #342400;
             }
             .bcd-root[data-collapsed="true"] .bcd-collapse .bcd-icon {
                 width: 18px;
@@ -494,6 +514,22 @@ export class ProgressUi {
         this.stop.dataset['visible'] = 'false';
         this.track.dataset['hidden'] = 'true';
         this.notice.textContent = message;
+        this.notice.dataset['visible'] = 'true';
+        this.panel.dataset['visible'] = 'true';
+    }
+
+    streamingWarning(streamableTracks: number, totalTracks: number): void {
+        this.root.dataset['running'] = 'false';
+        this.root.dataset['streaming'] = 'true';
+        this.action.classList.add('bcd-streaming');
+        this.action.disabled = false;
+        this.setAction('Download MP3 stream', 'download');
+        this.stop.dataset['visible'] = 'false';
+        this.track.dataset['hidden'] = 'true';
+        const partial = totalTracks > streamableTracks;
+        this.notice.textContent = partial
+            ? `Warning: only ${streamableTracks} of ${totalTracks} tracks are streamable. Saves available audio at Bandcamp's standard 128 kbps quality.`
+            : "Warning: saves Bandcamp's streaming audio at standard 128 kbps quality, not the original download.";
         this.notice.dataset['visible'] = 'true';
         this.panel.dataset['visible'] = 'true';
     }

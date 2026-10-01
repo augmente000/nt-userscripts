@@ -1,7 +1,7 @@
 import { classifyRelease, fetchCookedDownload, resolvePurchasedDownload } from './bandcamp.ts';
 import { GuerrillaInbox } from './guerrilla-mail.ts';
 import { abortError, requestBinaryChunked, requestText } from './network.ts';
-import type { BinaryResponse, CookedDownload, DownloadResult, ReleaseInfo } from './types.ts';
+import type { BinaryResponse, CookedDownload, DownloadResult, ReleaseInfo, StreamTrack } from './types.ts';
 import { createZip } from './zip.ts';
 
 type StatusReporter = (message: string, progress?: number) => void;
@@ -265,6 +265,67 @@ async function downloadTrack(
     browserSave(zip, `${baseName}.zip`);
 }
 
+function streamTrackFileName(release: ReleaseInfo, track: StreamTrack, width: number): string {
+    const title = track.title.includes(' - ') ? track.title : `${release.artist} - ${track.title}`;
+    if (release.tralbum.current.type === 'track') {
+        return `${safeFileName(title)}.mp3`;
+    }
+    return `${String(track.trackNumber).padStart(width, '0')}. ${safeFileName(title)}.mp3`;
+}
+
+function hasMp3Signature(response: BinaryResponse): boolean {
+    const bytes = new Uint8Array(response.body, 0, Math.min(response.body.byteLength, 3));
+    return (
+        (bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) ||
+        (bytes[0] === 0xff && bytes[1] !== undefined && (bytes[1] & 0xe0) === 0xe0)
+    );
+}
+
+async function downloadStream(release: ReleaseInfo, report: StatusReporter, signal: AbortSignal): Promise<void> {
+    const tracks = release.streamTracks;
+    if (tracks.length === 0) {
+        throw new Error('Bandcamp did not provide any streamable tracks');
+    }
+
+    const entries: Array<{ data: ArrayBuffer; name: string }> = [];
+    const workItems = tracks.length + (release.artworkUrl ? 1 : 0);
+    const trackNumberWidth = Math.max(2, String(Math.max(...tracks.map(track => track.trackNumber))).length);
+    for (const [index, track] of tracks.entries()) {
+        const label = tracks.length === 1 ? track.title : `${index + 1}/${tracks.length} ${track.title}`;
+        report(`Downloading 128 kbps MP3 · ${label}`, index / workItems);
+        const audio = await requestBinaryChunked(
+            track.url,
+            (loaded, total) =>
+                report(
+                    `Downloading 128 kbps MP3 · ${label} · ${percentage(loaded, total)}`,
+                    total ? (index + loaded / total) / workItems : undefined,
+                ),
+            signal,
+        );
+        if (!hasMp3Signature(audio)) {
+            throw new Error(`Bandcamp returned ${audio.contentType ?? 'an invalid payload'} instead of MP3`);
+        }
+        entries.push({ data: audio.body, name: streamTrackFileName(release, track, trackNumberWidth) });
+    }
+
+    if (release.artworkUrl) {
+        report('Downloading artwork', tracks.length / workItems);
+        const artwork = await requestBinaryChunked(
+            release.artworkUrl,
+            (loaded, total) =>
+                report('Downloading artwork', total ? (tracks.length + loaded / total) / workItems : undefined),
+            signal,
+        );
+        entries.push({
+            data: artwork.body,
+            name: `front.${extensionFromArtwork(artwork, release.artworkUrl)}`,
+        });
+    }
+
+    report('Packaging stream ZIP', 0.99);
+    browserSave(createZip(entries), `${releaseBaseName(release)} [MP3-128 stream].zip`);
+}
+
 async function resolveDownload(
     release: ReleaseInfo,
     inbox: GuerrillaInbox,
@@ -302,6 +363,7 @@ export async function downloadRelease(
     inbox: GuerrillaInbox,
     report: StatusReporter,
     signal: AbortSignal,
+    allowStreamingFallback = false,
 ): Promise<DownloadResult> {
     if (!release.tralbum.hasAudio) {
         return { detail: 'No downloadable audio', outcome: 'skipped' };
@@ -309,6 +371,17 @@ export async function downloadRelease(
 
     const download = await resolveDownload(release, inbox, report, signal);
     if (!download) {
+        if (allowStreamingFallback && release.streamTracks.length > 0) {
+            await downloadStream(release, report, signal);
+            const unavailableCount = release.tralbum.trackinfo.length - release.streamTracks.length;
+            return {
+                detail:
+                    unavailableCount > 0
+                        ? `Saved ${release.streamTracks.length} streamable track${release.streamTracks.length === 1 ? '' : 's'}; ${unavailableCount} unavailable`
+                        : 'Saved 128 kbps stream',
+                outcome: 'completed',
+            };
+        }
         return { detail: 'Not free and not in your collection', outcome: 'skipped' };
     }
 

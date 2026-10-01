@@ -149,6 +149,33 @@ function parseTralbum(document: Document): TralbumData {
         throw new Error('Bandcamp release data is missing an item identifier');
     }
 
+    const trackinfo = Array.isArray(parsed['trackinfo'])
+        ? parsed['trackinfo'].flatMap((candidate, index) => {
+              if (!isRecord(candidate)) {
+                  return [];
+              }
+              const rawFile = candidate['file'];
+              const file = isRecord(rawFile)
+                  ? Object.fromEntries(
+                        Object.entries(rawFile).filter(
+                            (entry): entry is [string, string] => typeof entry[1] === 'string' && Boolean(entry[1]),
+                        ),
+                    )
+                  : null;
+              const rawTrackNumber = Number(candidate['track_num']);
+              return [
+                  {
+                      file,
+                      title:
+                          typeof candidate['title'] === 'string' && candidate['title'].trim()
+                              ? candidate['title'].trim()
+                              : `Track ${index + 1}`,
+                      trackNumber: Number.isInteger(rawTrackNumber) && rawTrackNumber > 0 ? rawTrackNumber : index + 1,
+                  },
+              ];
+          })
+        : [];
+
     return {
         current: {
             id: currentId,
@@ -163,6 +190,7 @@ function parseTralbum(document: Document): TralbumData {
         id,
         is_purchased: parsed['is_purchased'] === true,
         item_type: typeof parsed['item_type'] === 'string' ? parsed['item_type'] : type,
+        trackinfo,
         url: typeof parsed['url'] === 'string' ? parsed['url'] : window.location.href,
         ...(typeof parsed['art_id'] === 'number' ? { art_id: parsed['art_id'] } : {}),
     };
@@ -318,6 +346,17 @@ function paymentDownloadPage(document: Document, pageUrl: string): string | null
 export function parseReleaseDocument(document: Document, pageUrl: string): ReleaseInfo {
     const tralbum = parseTralbum(document);
     const jsonLd = jsonLdDocuments(document);
+    const streamTracks = tralbum.trackinfo.flatMap(track => {
+        const url = track.file?.['mp3-128'];
+        if (!url) {
+            return [];
+        }
+        try {
+            return [{ title: track.title, trackNumber: track.trackNumber, url: normalizeReleaseUrl(url, pageUrl) }];
+        } catch {
+            return [];
+        }
+    });
     return {
         artworkUrl: artworkUrl(document, tralbum, jsonLd),
         artist:
@@ -329,6 +368,7 @@ export function parseReleaseDocument(document: Document, pageUrl: string): Relea
         fanId: fanId(document),
         isFree: jsonLd.some(data => releaseOfferPrice(data) === 0),
         paymentDownloadPage: paymentDownloadPage(document, pageUrl),
+        streamTracks,
         title: tralbum.current.title,
         tralbum,
         url: pageUrl,

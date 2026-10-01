@@ -22,8 +22,21 @@ export interface TralbumData {
     id: number;
     is_purchased: boolean;
     item_type: string;
+    trackinfo: TralbumTrack[];
     url: string;
     art_id?: number | null;
+}
+
+export interface TralbumTrack {
+    file: Record<string, string> | null;
+    title: string;
+    trackNumber: number;
+}
+
+export interface StreamTrack {
+    title: string;
+    trackNumber: number;
+    url: string;
 }
 
 export interface ReleaseInfo {
@@ -33,6 +46,7 @@ export interface ReleaseInfo {
     fanId: number | null;
     isFree: boolean;
     paymentDownloadPage: string | null;
+    streamTracks: StreamTrack[];
     title: string;
     tralbum: TralbumData;
     url: string;
