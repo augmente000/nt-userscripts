@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bandcamp Collection Downloader
 // @description  Downloads free and purchased Bandcamp releases as zipped FLAC, with a 128 kbps streaming fallback on individual release pages.
-// @version      2026.10.01.1
+// @version      2026.10.26.1
 // @author       
 // @namespace    https://greasyfork.org/en/scripts/587730-bandcamp-collection-downloader
 // @downloadURL  https://update.greasyfork.org/scripts/587730/Bandcamp%20Collection%20Downloader.user.js
@@ -13,6 +13,7 @@
 // @connect      *.bcbits.com
 // @connect      api.guerrillamail.com
 // @connect      guerrillamail.com
+// @connect      api.mail.tm
 // @grant        GM_download
 // @grant        GM_xmlhttpRequest
 // @run-at       document-idle
@@ -662,7 +663,147 @@
       return 'unavailable';
     }
 
-    const API_URL = 'https://api.guerrillamail.com/ajax.php';
+    class GuerrillaMailProvider {
+      name = 'Guerrilla Mail';
+      sessionToken = null;
+      constructor(signal) {
+        this.signal = signal;
+      }
+      api(functionName, parameters = {}) {
+        const url = new URL('https://api.guerrillamail.com/ajax.php');
+        url.searchParams.set('f', functionName);
+        url.searchParams.set('ip', '127.0.0.1');
+        url.searchParams.set('agent', navigator.userAgent.slice(0, 160));
+        if (this.sessionToken) {
+          url.searchParams.set('sid_token', this.sessionToken);
+        }
+        for (const [key, value] of Object.entries(parameters)) {
+          url.searchParams.set(key, String(value));
+        }
+        return requestJson(url.href, this.signal ? {
+          signal: this.signal
+        } : {});
+      }
+      async createAddress() {
+        const response = await this.api('get_email_address', {
+          lang: 'en'
+        });
+        if (!response.email_addr || !response.sid_token) {
+          throw new Error('Guerrilla Mail did not return a temporary address and session token');
+        }
+        this.sessionToken = response.sid_token;
+        return response.email_addr;
+      }
+      async listMessages() {
+        const response = await this.api('check_email', {
+          seq: 0
+        });
+        if (!Array.isArray(response.list)) {
+          throw new Error('Guerrilla Mail returned an invalid message list');
+        }
+        return response.list.map(message => ({
+          id: message.mail_id === undefined ? '' : String(message.mail_id),
+          sender: message.mail_from ?? '',
+          subject: message.mail_subject ?? ''
+        }));
+      }
+      async readMessage(id) {
+        const response = await this.api('fetch_email', {
+          email_id: id
+        });
+        if (typeof response.mail_body !== 'string') {
+          throw new Error('Guerrilla Mail returned an invalid message body');
+        }
+        return response.mail_body;
+      }
+    }
+    /** https://docs.mail.tm/ — no API key; credentials exist only for this download queue. */
+    class MailTmProvider {
+      name = 'Mail.tm';
+      token = null;
+      nextRequestAt = 0;
+      constructor(signal) {
+        this.signal = signal;
+      }
+      async api(path, data) {
+        // Stay below Mail.tm's 8 requests/second per-IP limit, including message reads.
+        const delay = this.nextRequestAt - Date.now();
+        if (delay > 0) {
+          await sleep(delay, this.signal);
+        }
+        this.nextRequestAt = Date.now() + 200;
+        return requestJson(`https://api.mail.tm${path}`, {
+          headers: {
+            Accept: 'application/ld+json',
+            ...(data ? {
+              'Content-Type': 'application/json'
+            } : {}),
+            ...(this.token ? {
+              Authorization: `Bearer ${this.token}`
+            } : {})
+          },
+          ...(data ? {
+            method: 'POST',
+            data: JSON.stringify(data)
+          } : {}),
+          ...(this.signal ? {
+            signal: this.signal
+          } : {})
+        });
+      }
+      async createAddress() {
+        const response = await this.api('/domains');
+        const domain = response['hydra:member']?.find(domain => domain.isActive && !domain.isPrivate)?.domain;
+        if (!domain) {
+          throw new Error('Mail.tm did not return an active public domain');
+        }
+        const credentials = {
+          address: `bc${crypto.randomUUID().replaceAll('-', '')}@${domain}`,
+          password: crypto.randomUUID()
+        };
+        const account = await this.api('/accounts', credentials);
+        if (account.address !== credentials.address) {
+          throw new Error('Mail.tm did not return the requested temporary address');
+        }
+        const auth = await this.api('/token', credentials);
+        if (!auth.token) {
+          throw new Error('Mail.tm did not return an authentication token');
+        }
+        this.token = auth.token;
+        return credentials.address;
+      }
+      async listMessages() {
+        const messages = [];
+        let path = '/messages';
+        const visited = new Set();
+        while (path && !visited.has(path)) {
+          visited.add(path);
+          const response = await this.api(path);
+          if (!Array.isArray(response['hydra:member'])) {
+            throw new Error('Mail.tm returned an invalid message list');
+          }
+          messages.push(...response['hydra:member'].map(message => ({
+            id: message.id,
+            sender: message.from.address,
+            subject: message.subject
+          })));
+          const next = response['hydra:view']?.['hydra:next'];
+          if (next && !next.startsWith('/messages?')) {
+            throw new Error('Mail.tm returned an invalid message page');
+          }
+          path = next;
+        }
+        return messages;
+      }
+      async readMessage(id) {
+        const response = await this.api(`/messages/${encodeURIComponent(id)}`);
+        if (!Array.isArray(response.html) && typeof response.text !== 'string') {
+          throw new Error('Mail.tm returned an invalid message body');
+        }
+        return [...(response.html ?? []), response.text ?? ''].join('\n');
+      }
+    }
+
     const POLL_INTERVAL_MS = 5_000;
     const EMAIL_TIMEOUT_MS = 180_000;
     function releaseKey(type, id) {
@@ -689,41 +830,30 @@
       const decoded = decodeHtmlText(body);
       return [...new Set(decoded.match(/https?:\/\/(?:[^\s"'<>]+\.)?bandcamp\.com\/download\?[^\s"'<>]+/gi) ?? [])];
     }
-    class GuerrillaInbox {
+    class ProviderInbox {
       addressPromise = null;
       downloads = new Map();
       nextPollAt = 0;
       pollPromise = null;
       seenMessages = new Set();
-      sessionToken = null;
-      constructor(signal) {
+      constructor(provider, signal) {
+        this.provider = provider;
         this.signal = signal;
       }
-      api(functionName, parameters = {}) {
-        const url = new URL(API_URL);
-        url.searchParams.set('f', functionName);
-        url.searchParams.set('ip', '127.0.0.1');
-        url.searchParams.set('agent', navigator.userAgent.slice(0, 160));
-        if (this.sessionToken) {
-          url.searchParams.set('sid_token', this.sessionToken);
+      async mailboxRequest(operation) {
+        try {
+          return await operation();
+        } catch (error) {
+          if (this.signal?.aborted) {
+            throw abortError(this.signal);
+          }
+          throw new MailboxError(`${this.provider.name}: ${error instanceof Error ? error.message : String(error)}`, {
+            cause: error
+          });
         }
-        for (const [key, value] of Object.entries(parameters)) {
-          url.searchParams.set(key, String(value));
-        }
-        return requestJson(url.href, this.signal ? {
-          signal: this.signal
-        } : {});
       }
       getAddress() {
-        this.addressPromise ??= this.api('get_email_address', {
-          lang: 'en'
-        }).then(response => {
-          if (!response.email_addr) {
-            throw new Error('Guerrilla Mail did not return a temporary address');
-          }
-          this.sessionToken = response.sid_token ?? null;
-          return response.email_addr;
-        });
+        this.addressPromise ??= this.mailboxRequest(() => this.provider.createAddress());
         return this.addressPromise;
       }
       async requestDownloadEmail(release) {
@@ -746,7 +876,7 @@
           } : {})
         });
         if (response.ok !== true) {
-          throw new Error('Bandcamp rejected the temporary email address');
+          throw new MailboxError(`Bandcamp rejected the ${this.provider.name} temporary email address`);
         }
       }
       async doPoll() {
@@ -755,24 +885,20 @@
           await sleep(delay, this.signal);
         }
         this.nextPollAt = Date.now() + POLL_INTERVAL_MS;
-        const response = await this.api('check_email', {
-          seq: 0
-        });
-        for (const message of response.list ?? []) {
-          const id = message.mail_id === undefined ? null : String(message.mail_id);
+        const messages = await this.mailboxRequest(() => this.provider.listMessages());
+        for (const message of messages) {
+          const id = message.id;
           if (!id || this.seenMessages.has(id)) {
             continue;
           }
-          const sender = decodeHtmlText(message.mail_from ?? '').toLowerCase();
-          const subject = decodeHtmlText(message.mail_subject ?? '').toLowerCase();
+          const sender = decodeHtmlText(message.sender).toLowerCase();
+          const subject = decodeHtmlText(message.subject).toLowerCase();
           if (!sender.includes('noreply@bandcamp.com') || !subject.includes('download')) {
             this.seenMessages.add(id);
             continue;
           }
-          const email = await this.api('fetch_email', {
-            email_id: id
-          });
-          const links = downloadLinks(email.mail_body ?? '');
+          const body = await this.mailboxRequest(() => this.provider.readMessage(id));
+          const links = downloadLinks(body);
           let resolvedLink = false;
           for (const url of links) {
             try {
@@ -780,6 +906,9 @@
               this.downloads.set(releaseKey(download.itemType, download.itemId), download);
               resolvedLink = true;
             } catch (error) {
+              if (this.signal?.aborted) {
+                throw abortError(this.signal);
+              }
               console.warn('[Bandcamp Collection Downloader] Ignoring unusable email link', error);
             }
           }
@@ -799,7 +928,6 @@
       async waitForDownload(release) {
         const key = releaseKey(release.tralbum.current.type, release.tralbum.current.id);
         const deadline = Date.now() + EMAIL_TIMEOUT_MS;
-        let lastPollError = null;
         while (Date.now() < deadline) {
           if (this.signal?.aborted) {
             throw abortError(this.signal);
@@ -809,18 +937,49 @@
             this.downloads.delete(key);
             return available;
           }
+          await this.poll();
+        }
+        throw new MailboxError(`Timed out waiting for the Bandcamp download email via ${this.provider.name}`);
+      }
+    }
+    class MailboxError extends Error {}
+
+    /** Provider sessions and polls are shared by all concurrent releases in one queue. */
+    class TemporaryInbox {
+      providers;
+      constructor(signal) {
+        this.signal = signal;
+        this.providers = [new GuerrillaMailProvider(signal), new MailTmProvider(signal)].map(provider => ({
+          inbox: new ProviderInbox(provider, signal),
+          name: provider.name
+        }));
+      }
+      async resolveDownload(release, report) {
+        if (this.signal?.aborted) {
+          throw abortError(this.signal);
+        }
+        for (const provider of this.providers) {
+          if (provider.failure) {
+            continue;
+          }
           try {
-            await this.poll();
-            lastPollError = null;
+            report(`Requesting download email via ${provider.name}`);
+            await provider.inbox.requestDownloadEmail(release);
+            report(`Waiting for Bandcamp email via ${provider.name}`);
+            return await provider.inbox.waitForDownload(release);
           } catch (error) {
-            lastPollError = error;
-            console.warn('[Bandcamp Collection Downloader] Email poll failed; retrying', error);
+            if (this.signal?.aborted) {
+              throw abortError(this.signal);
+            }
+            // Bandcamp HTTP failures are not mailbox outages: keep their original error.
+            if (!(error instanceof MailboxError)) {
+              throw error;
+            }
+            provider.failure = error;
+            console.warn(`[Bandcamp Collection Downloader] ${provider.name} failed; trying next mail provider`, error);
           }
         }
-        if (lastPollError instanceof Error) {
-          throw new Error(`Timed out waiting for the Bandcamp download email: ${lastPollError.message}`);
-        }
-        throw new Error('Timed out waiting for the Bandcamp download email');
+        throw new AggregateError(this.providers.map(provider => provider.failure), `All temporary mail providers failed: ${this.providers.map(provider => provider.failure?.message).join('; ')}`);
       }
     }
 
@@ -1189,10 +1348,7 @@
           }
         case 'email-gated':
           {
-            report('Requesting download email');
-            await inbox.requestDownloadEmail(release);
-            report('Waiting for Bandcamp email');
-            return inbox.waitForDownload(release);
+            return inbox.resolveDownload(release, report);
           }
         case 'purchased':
           {
@@ -1613,6 +1769,13 @@
         } else {
           this.panel.append(this.track, this.notice);
         }
+        const mailCredit = document.createElement('a');
+        mailCredit.href = 'https://mail.tm/';
+        mailCredit.target = '_blank';
+        mailCredit.rel = 'noopener noreferrer';
+        mailCredit.textContent = 'Temporary email fallback by Mail.tm';
+        mailCredit.style.cssText = 'display:block;margin-top:6px;color:#9eafa6;font-size:10px';
+        this.panel.append(mailCredit);
         this.root.append(controls, this.panel);
         shadow.append(style, this.root);
         document.body.append(this.host);
@@ -1747,7 +1910,7 @@
       return error instanceof Error ? error.message : String(error);
     }
     async function runQueue(tasks, ui, currentRelease, allowStreamingFallback, signal) {
-      const inbox = new GuerrillaInbox(signal);
+      const inbox = new TemporaryInbox(signal);
       const itemProgress = new Map();
       const statuses = new Map();
       const snapshot = {
