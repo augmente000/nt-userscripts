@@ -1,6 +1,6 @@
 import { classifyRelease, fetchCookedDownload, resolvePurchasedDownload } from './bandcamp.ts';
-import { GuerrillaInbox } from './guerrilla-mail.ts';
 import { abortError, requestBinaryChunked, requestText } from './network.ts';
+import { TemporaryInbox } from './temporary-mail.ts';
 import type { BinaryResponse, CookedDownload, DownloadResult, ReleaseInfo, StreamTrack } from './types.ts';
 import { createZip } from './zip.ts';
 
@@ -328,7 +328,7 @@ async function downloadStream(release: ReleaseInfo, report: StatusReporter, sign
 
 async function resolveDownload(
     release: ReleaseInfo,
-    inbox: GuerrillaInbox,
+    inbox: TemporaryInbox,
     report: StatusReporter,
     signal: AbortSignal,
 ): Promise<CookedDownload | null> {
@@ -343,10 +343,7 @@ async function resolveDownload(
             return fetchCookedDownload(release.tralbum.freeDownloadPage ?? '', signal);
         }
         case 'email-gated': {
-            report('Requesting download email');
-            await inbox.requestDownloadEmail(release);
-            report('Waiting for Bandcamp email');
-            return inbox.waitForDownload(release);
+            return inbox.resolveDownload(release, report);
         }
         case 'purchased': {
             report('Finding release in your collection');
@@ -360,7 +357,7 @@ async function resolveDownload(
 
 export async function downloadRelease(
     release: ReleaseInfo,
-    inbox: GuerrillaInbox,
+    inbox: TemporaryInbox,
     report: StatusReporter,
     signal: AbortSignal,
     allowStreamingFallback = false,

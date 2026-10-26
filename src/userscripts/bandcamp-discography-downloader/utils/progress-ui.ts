@@ -387,6 +387,13 @@ export class ProgressUi {
         } else {
             this.panel.append(this.track, this.notice);
         }
+        const mailCredit = document.createElement('a');
+        mailCredit.href = 'https://mail.tm/';
+        mailCredit.target = '_blank';
+        mailCredit.rel = 'noopener noreferrer';
+        mailCredit.textContent = 'Temporary email fallback by Mail.tm';
+        mailCredit.style.cssText = 'display:block;margin-top:6px;color:#9eafa6;font-size:10px';
+        this.panel.append(mailCredit);
         this.root.append(controls, this.panel);
         shadow.append(style, this.root);
         document.body.append(this.host);

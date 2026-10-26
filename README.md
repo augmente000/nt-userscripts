@@ -12,8 +12,10 @@ The script adds **Download All** to artist root and `/music` pages, and **Downlo
 
 - direct free downloads;
 - downloads previously authorized by email for the artist or label;
-- email-gated free/name-your-price downloads, using a temporary Guerrilla Mail inbox;
+- email-gated free/name-your-price downloads, using a temporary Guerrilla Mail inbox with automatic [Mail.tm](https://mail.tm/) fallback;
 - releases in the logged-in Bandcamp user's collection.
+
+If a temporary mail provider fails to create or read the inbox, Bandcamp rejects the address, or receives no download email within three minutes, the script tries the next provider and requests the email again. Failed providers are skipped for the rest of that download queue. No API key setup is required.
 
 Albums use Bandcamp's zipped FLAC download. Standalone tracks are saved as a ZIP containing the FLAC and cover artwork. Discography downloads run with at most three active releases, and a compact floating panel shows progress and can stop the active queue. Paid releases outside the user's collection are skipped.
 

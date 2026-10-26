@@ -1,7 +1,7 @@
 import { classifyRelease, detectPage, discoverReleases, fetchRelease, parseReleaseDocument } from './utils/bandcamp.ts';
 import { downloadRelease } from './utils/downloader.ts';
-import { GuerrillaInbox } from './utils/guerrilla-mail.ts';
 import { ProgressUi, progressUiExists } from './utils/progress-ui.ts';
+import { TemporaryInbox } from './utils/temporary-mail.ts';
 import type { ProgressSnapshot, ReleaseInfo, ReleaseTask } from './utils/types.ts';
 
 const MAX_ACTIVE_DOWNLOADS = 3;
@@ -17,7 +17,7 @@ async function runQueue(
     allowStreamingFallback: boolean,
     signal: AbortSignal,
 ): Promise<void> {
-    const inbox = new GuerrillaInbox(signal);
+    const inbox = new TemporaryInbox(signal);
     const itemProgress = new Map<number, number>();
     const statuses = new Map<number, string>();
     const snapshot: ProgressSnapshot = {

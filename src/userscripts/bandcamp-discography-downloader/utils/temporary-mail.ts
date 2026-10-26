@@ -1,29 +1,10 @@
 import { fetchCookedDownload } from './bandcamp.ts';
+import { GuerrillaMailProvider, MailTmProvider, type MailProvider } from './mail-providers.ts';
 import { abortError, formEncode, requestJson, sleep } from './network.ts';
 import type { CookedDownload, ReleaseInfo } from './types.ts';
 
-const API_URL = 'https://api.guerrillamail.com/ajax.php';
 const POLL_INTERVAL_MS = 5_000;
 const EMAIL_TIMEOUT_MS = 180_000;
-
-interface AddressResponse {
-    email_addr?: string;
-    sid_token?: string;
-}
-
-interface EmailSummary {
-    mail_from?: string;
-    mail_id?: string | number;
-    mail_subject?: string;
-}
-
-interface EmailListResponse {
-    list?: EmailSummary[];
-}
-
-interface EmailResponse {
-    mail_body?: string;
-}
 
 interface EmailDownloadResponse {
     ok?: boolean;
@@ -62,38 +43,32 @@ function downloadLinks(body: string): string[] {
     return [...new Set(decoded.match(/https?:\/\/(?:[^\s"'<>]+\.)?bandcamp\.com\/download\?[^\s"'<>]+/gi) ?? [])];
 }
 
-export class GuerrillaInbox {
+class ProviderInbox {
     private addressPromise: Promise<string> | null = null;
     private readonly downloads = new Map<string, CookedDownload>();
     private nextPollAt = 0;
     private pollPromise: Promise<void> | null = null;
     private readonly seenMessages = new Set<string>();
-    private sessionToken: string | null = null;
+    constructor(
+        private readonly provider: MailProvider,
+        private readonly signal?: AbortSignal,
+    ) {}
 
-    constructor(private readonly signal?: AbortSignal) {}
-
-    private api<T>(functionName: string, parameters: Record<string, string | number> = {}): Promise<T> {
-        const url = new URL(API_URL);
-        url.searchParams.set('f', functionName);
-        url.searchParams.set('ip', '127.0.0.1');
-        url.searchParams.set('agent', navigator.userAgent.slice(0, 160));
-        if (this.sessionToken) {
-            url.searchParams.set('sid_token', this.sessionToken);
+    private async mailboxRequest<T>(operation: () => Promise<T>): Promise<T> {
+        try {
+            return await operation();
+        } catch (error) {
+            if (this.signal?.aborted) {
+                throw abortError(this.signal);
+            }
+            throw new MailboxError(`${this.provider.name}: ${error instanceof Error ? error.message : String(error)}`, {
+                cause: error,
+            });
         }
-        for (const [key, value] of Object.entries(parameters)) {
-            url.searchParams.set(key, String(value));
-        }
-        return requestJson<T>(url.href, this.signal ? { signal: this.signal } : {});
     }
 
     private getAddress(): Promise<string> {
-        this.addressPromise ??= this.api<AddressResponse>('get_email_address', { lang: 'en' }).then(response => {
-            if (!response.email_addr) {
-                throw new Error('Guerrilla Mail did not return a temporary address');
-            }
-            this.sessionToken = response.sid_token ?? null;
-            return response.email_addr;
-        });
+        this.addressPromise ??= this.mailboxRequest(() => this.provider.createAddress());
         return this.addressPromise;
     }
 
@@ -113,7 +88,7 @@ export class GuerrillaInbox {
             ...(this.signal ? { signal: this.signal } : {}),
         });
         if (response.ok !== true) {
-            throw new Error('Bandcamp rejected the temporary email address');
+            throw new MailboxError(`Bandcamp rejected the ${this.provider.name} temporary email address`);
         }
     }
 
@@ -124,21 +99,21 @@ export class GuerrillaInbox {
         }
         this.nextPollAt = Date.now() + POLL_INTERVAL_MS;
 
-        const response = await this.api<EmailListResponse>('check_email', { seq: 0 });
-        for (const message of response.list ?? []) {
-            const id = message.mail_id === undefined ? null : String(message.mail_id);
+        const messages = await this.mailboxRequest(() => this.provider.listMessages());
+        for (const message of messages) {
+            const id = message.id;
             if (!id || this.seenMessages.has(id)) {
                 continue;
             }
-            const sender = decodeHtmlText(message.mail_from ?? '').toLowerCase();
-            const subject = decodeHtmlText(message.mail_subject ?? '').toLowerCase();
+            const sender = decodeHtmlText(message.sender).toLowerCase();
+            const subject = decodeHtmlText(message.subject).toLowerCase();
             if (!sender.includes('noreply@bandcamp.com') || !subject.includes('download')) {
                 this.seenMessages.add(id);
                 continue;
             }
 
-            const email = await this.api<EmailResponse>('fetch_email', { email_id: id });
-            const links = downloadLinks(email.mail_body ?? '');
+            const body = await this.mailboxRequest(() => this.provider.readMessage(id));
+            const links = downloadLinks(body);
             let resolvedLink = false;
             for (const url of links) {
                 try {
@@ -146,6 +121,9 @@ export class GuerrillaInbox {
                     this.downloads.set(releaseKey(download.itemType, download.itemId), download);
                     resolvedLink = true;
                 } catch (error) {
+                    if (this.signal?.aborted) {
+                        throw abortError(this.signal);
+                    }
                     console.warn('[Bandcamp Collection Downloader] Ignoring unusable email link', error);
                 }
             }
@@ -167,7 +145,6 @@ export class GuerrillaInbox {
     async waitForDownload(release: ReleaseInfo): Promise<CookedDownload> {
         const key = releaseKey(release.tralbum.current.type, release.tralbum.current.id);
         const deadline = Date.now() + EMAIL_TIMEOUT_MS;
-        let lastPollError: unknown = null;
         while (Date.now() < deadline) {
             if (this.signal?.aborted) {
                 throw abortError(this.signal);
@@ -177,17 +154,56 @@ export class GuerrillaInbox {
                 this.downloads.delete(key);
                 return available;
             }
+            await this.poll();
+        }
+        throw new MailboxError(`Timed out waiting for the Bandcamp download email via ${this.provider.name}`);
+    }
+}
+
+class MailboxError extends Error {}
+
+/** Provider sessions and polls are shared by all concurrent releases in one queue. */
+export class TemporaryInbox {
+    private readonly providers: { inbox: ProviderInbox; name: string; failure?: MailboxError }[];
+
+    constructor(private readonly signal?: AbortSignal) {
+        this.providers = [new GuerrillaMailProvider(signal), new MailTmProvider(signal)].map(provider => ({
+            inbox: new ProviderInbox(provider, signal),
+            name: provider.name,
+        }));
+    }
+
+    async resolveDownload(release: ReleaseInfo, report: (message: string) => void): Promise<CookedDownload> {
+        if (this.signal?.aborted) {
+            throw abortError(this.signal);
+        }
+        for (const provider of this.providers) {
+            if (provider.failure) {
+                continue;
+            }
             try {
-                await this.poll();
-                lastPollError = null;
+                report(`Requesting download email via ${provider.name}`);
+                await provider.inbox.requestDownloadEmail(release);
+                report(`Waiting for Bandcamp email via ${provider.name}`);
+                return await provider.inbox.waitForDownload(release);
             } catch (error) {
-                lastPollError = error;
-                console.warn('[Bandcamp Collection Downloader] Email poll failed; retrying', error);
+                if (this.signal?.aborted) {
+                    throw abortError(this.signal);
+                }
+                // Bandcamp HTTP failures are not mailbox outages: keep their original error.
+                if (!(error instanceof MailboxError)) {
+                    throw error;
+                }
+                provider.failure = error;
+                console.warn(
+                    `[Bandcamp Collection Downloader] ${provider.name} failed; trying next mail provider`,
+                    error,
+                );
             }
         }
-        if (lastPollError instanceof Error) {
-            throw new Error(`Timed out waiting for the Bandcamp download email: ${lastPollError.message}`);
-        }
-        throw new Error('Timed out waiting for the Bandcamp download email');
+        throw new AggregateError(
+            this.providers.map(provider => provider.failure),
+            `All temporary mail providers failed: ${this.providers.map(provider => provider.failure?.message).join('; ')}`,
+        );
     }
 }
