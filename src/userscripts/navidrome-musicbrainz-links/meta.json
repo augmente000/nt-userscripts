@@ -6,19 +6,9 @@
     "namespace": "https://github.com/augmente000/nt-userscripts",
     "downloadURL": "https://raw.githubusercontent.com/augmente000/nt-userscripts/dist/navidrome-musicbrainz-links.user.js",
     "updateURL": "https://raw.githubusercontent.com/augmente000/nt-userscripts/dist/navidrome-musicbrainz-links.user.js",
-    "match": [
-        "http://jrmnas.local:4533/app/*",
-        "https://jrmnas.local:4533/app/*"
-    ],
-    "connect": [
-        "musicbrainz.org",
-        "api.new-team.me"
-    ],
-    "grant": [
-        "GM_xmlhttpRequest",
-        "GM_getValue",
-        "GM_setValue"
-    ],
+    "match": ["http://jrmnas.local:4533/app/*", "https://jrmnas.local:4533/app/*"],
+    "connect": ["musicbrainz.org", "api.new-team.me"],
+    "grant": ["GM_xmlhttpRequest", "GM_getValue", "GM_setValue"],
     "runAt": "document-idle",
     "icon": "https://raw.githubusercontent.com/augmente000/nt-userscripts/master/src/assets/cms-logo.svg"
 }
