@@ -17,6 +17,8 @@ The script adds **Download All** to artist root and `/music` pages, and **Downlo
 
 If a temporary mail provider fails to create or read the inbox, Bandcamp rejects the address, or receives no download email within three minutes, the script tries the next provider and requests the email again. Failed providers are skipped for the rest of that download queue. No API key setup is required.
 
+The script reuses Bandcamp's existing `payments` browser cookie, including authorization from manual downloads. After following a temporary-mail download link, it saves Bandcamp's signed cookie with the original domain and expiration. Queued releases from the same artist wait for the first confirmation and check for authorization again before requesting another email. Bandcamp currently sets this cookie to expire after about 60 hours; a new email may be needed after expiration. See [download authorization troubleshooting](docs/bandcamp-download-authorization.md).
+
 Albums use Bandcamp's zipped FLAC download. Standalone tracks are saved as a ZIP containing the FLAC and cover artwork. Discography downloads run with at most three active releases, and a compact floating panel shows progress and can stop the active queue. Paid releases outside the user's collection are skipped.
 
 ### Screenshots

@@ -1,4 +1,4 @@
-import { fetchCookedDownload } from './bandcamp.ts';
+import { fetchCookedDownload, fetchRelease } from './bandcamp.ts';
 import { GuerrillaMailProvider, MailTmProvider, type MailProvider } from './mail-providers.ts';
 import { abortError, formEncode, requestJson, sleep } from './network.ts';
 import type { CookedDownload, ReleaseInfo } from './types.ts';
@@ -165,6 +165,7 @@ class MailboxError extends Error {}
 /** Provider sessions and polls are shared by all concurrent releases in one queue. */
 export class TemporaryInbox {
     private readonly providers: { inbox: ProviderInbox; name: string; failure?: MailboxError }[];
+    private readonly authorizations = new Map<string, Promise<void>>();
 
     constructor(private readonly signal?: AbortSignal) {
         this.providers = [new GuerrillaMailProvider(signal), new MailTmProvider(signal)].map(provider => ({
@@ -173,7 +174,43 @@ export class TemporaryInbox {
         }));
     }
 
-    async resolveDownload(release: ReleaseInfo, report: (message: string) => void): Promise<CookedDownload> {
+    resolveDownload(release: ReleaseInfo, report: (message: string) => void): Promise<CookedDownload> {
+        const origin = new URL(release.url).origin;
+        const previous = this.authorizations.get(origin) ?? Promise.resolve();
+        const result = previous.then(async () => {
+            if (this.signal?.aborted) {
+                throw abortError(this.signal);
+            }
+            // The open page (or another worker's fetched page) may predate a manual
+            // download or the first email confirmation in this queue.
+            report('Checking previous download authorization');
+            const fresh = await fetchRelease(release.url, this.signal);
+            const url = fresh.paymentDownloadPage ?? fresh.tralbum.freeDownloadPage;
+            if (url) {
+                report('Resolving authorized download');
+                return fetchCookedDownload(url, this.signal);
+            }
+            return this.resolveWithProviders(fresh, report);
+        });
+        // Only one email confirmation per artist at a time. Waiting releases recheck
+        // Bandcamp after it has set the cookie, rather than each requesting an email.
+        const settled = result.then(
+            () => {},
+            () => {},
+        );
+        this.authorizations.set(origin, settled);
+        void settled.then(() => {
+            if (this.authorizations.get(origin) === settled) {
+                this.authorizations.delete(origin);
+            }
+        });
+        return result;
+    }
+
+    private async resolveWithProviders(
+        release: ReleaseInfo,
+        report: (message: string) => void,
+    ): Promise<CookedDownload> {
         if (this.signal?.aborted) {
             throw abortError(this.signal);
         }

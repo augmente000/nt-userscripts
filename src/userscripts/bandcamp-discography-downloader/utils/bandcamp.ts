@@ -376,7 +376,10 @@ export function parseReleaseDocument(document: Document, pageUrl: string): Relea
 }
 
 export async function fetchRelease(url: string, signal?: AbortSignal): Promise<ReleaseInfo> {
-    const html = await requestText(url, signal ? { signal } : {});
+    const html = await requestText(url, {
+        headers: { 'Cache-Control': 'no-cache' },
+        ...(signal ? { signal } : {}),
+    });
     const document = new DOMParser().parseFromString(html, 'text/html');
     return parseReleaseDocument(document, url);
 }

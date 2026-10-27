@@ -1,3 +1,4 @@
+import { paymentsCookie, rememberPaymentsCookie } from './download-cookies.ts';
 import type { BinaryResponse } from './types.ts';
 
 interface RequestOptions {
@@ -73,7 +74,9 @@ export function request(url: string, options: RequestOptions = {}): Promise<Resp
         };
 
         options.signal?.addEventListener('abort', abort, { once: true });
+        const cookie = paymentsCookie(url);
         handle = GM_xmlhttpRequest({
+            ...(cookie ? { cookie } : {}),
             data: options.data,
             headers: options.headers,
             method: options.method ?? 'GET',
@@ -89,6 +92,8 @@ export function request(url: string, options: RequestOptions = {}): Promise<Resp
                     rejectOnce(new HttpError(`Request failed (${response.status}) for ${url}`, response.status));
                     return;
                 }
+
+                rememberPaymentsCookie(url, response.finalUrl || url, response.responseHeaders);
 
                 if (response.response === null && response.responseText == null) {
                     console.warn('[Bandcamp Collection Downloader] Binary response diagnostic', {

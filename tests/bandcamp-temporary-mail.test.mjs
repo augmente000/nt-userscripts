@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import { TemporaryInbox } from '../src/userscripts/bandcamp-discography-downloader/utils/temporary-mail.ts';
 
 const release = id => ({
-    url: 'https://artist.bandcamp.com/album/example',
+    url: `https://artist.bandcamp.com/album/example-${id}`,
     tralbum: { current: { type: 'album', id } },
 });
 const realNow = Date.now;
@@ -23,9 +23,21 @@ globalThis.document = {
 };
 globalThis.DOMParser = class {
     parseFromString(body) {
+        let data;
+        try {
+            data = JSON.parse(body);
+        } catch {}
         return {
-            querySelectorAll: () => [...body.matchAll(/href="([^"]+)"/g)].map(match => ({ href: match[1] })),
-            querySelector: () => ({ dataset: { blob: body } }),
+            querySelectorAll: selector =>
+                selector === 'a[href]'
+                    ? [...body.matchAll(/href="([^"]+)"/g)].map(match => ({ href: match[1] }))
+                    : [{ textContent: JSON.stringify({ offers: { price: 0 } }) }],
+            querySelector: selector => {
+                if (selector === 'script[data-tralbum]') return { getAttribute: () => JSON.stringify(data.tralbum) };
+                if (selector === '[data-payment]') return { dataset: { payment: JSON.stringify(data.payment) } };
+                if (selector === '#pagedata[data-blob]') return { dataset: { blob: body } };
+                return null;
+            },
         };
     }
 };
@@ -38,6 +50,8 @@ function harness({
     rejectPrimary,
     malformedPrimary,
     primaryNeverDelivers,
+    recognizesCookie = false,
+    existingCookie = '',
 } = {}) {
     let clock = 0;
     Date.now = () => clock;
@@ -49,13 +63,24 @@ function harness({
         clearTimeout,
     };
     const calls = [];
+    const requests = [];
     const sent = [];
+    let cookie = existingCookie;
+    Object.defineProperty(document, 'cookie', {
+        configurable: true,
+        get: () => cookie,
+        set: value => {
+            cookie = value.split(';')[0];
+        },
+    });
     let address;
     globalThis.GM_xmlhttpRequest = options => {
         const url = new URL(options.url);
         calls.push(url);
+        requests.push(options);
         let status = 200;
         let body;
+        let responseHeaders = '';
         if (url.hostname === 'api.guerrillamail.com') {
             const operation = url.searchParams.get('f');
             if (cancel) cancel.abort();
@@ -99,12 +124,33 @@ function harness({
                         ],
                     };
             }
+        } else if (url.pathname.startsWith('/album/')) {
+            const id = Number(url.pathname.split('-').at(-1));
+            assert.equal(options.headers['Cache-Control'], 'no-cache');
+            body = {
+                tralbum: {
+                    current: { type: 'album', id, title: `Release ${id}` },
+                    id,
+                    hasAudio: true,
+                    trackinfo: [],
+                    url: url.href,
+                },
+                payment: {
+                    paymentDownloadPage:
+                        recognizesCookie && options.cookie?.startsWith('payments=')
+                            ? `https://bandcamp.com/download?id=${id}`
+                            : null,
+                },
+            };
         } else if (url.pathname === '/email_download') {
             const params = new URLSearchParams(options.data);
             if (bandcampFailure) status = 500;
             sent.push(Number(params.get('item_id')));
             body = { ok: !(rejectPrimary && params.get('address') === 'primary@example.org') };
         } else if (url.pathname === '/download') {
+            if (recognizesCookie)
+                responseHeaders =
+                    'Set-Cookie: payments=1%09signed-value%09signature; domain=.bandcamp.com; path=/; expires=Thu, 29 Oct 2026 15:12:29 GMT';
             body = {
                 digital_items: [
                     {
@@ -116,11 +162,11 @@ function harness({
             };
         } else throw new Error(`Unexpected request ${url}`);
         queueMicrotask(() =>
-            options.onload({ status, responseText: JSON.stringify(body), responseHeaders: '', finalUrl: url.href }),
+            options.onload({ status, responseText: JSON.stringify(body), responseHeaders, finalUrl: url.href }),
         );
         return { abort() {} };
     };
-    return { calls, sent };
+    return { calls, requests, sent };
 }
 
 test('primary remains preferred when healthy', async () => {
@@ -142,7 +188,11 @@ for (const primaryFailure of ['get_email_address', 'check_email', 'fetch_email']
         assert.equal(calls.filter(url => url.hostname === 'api.mail.tm' && url.pathname === '/accounts').length, 1);
         assert.equal(calls.filter(url => url.searchParams.get('f') === 'get_email_address').length, 1);
         if (primaryFailure !== 'get_email_address')
-            assert.equal(sent.length, 6, 'resends pending releases to fallback');
+            assert.equal(
+                sent.length,
+                4,
+                'retries the first release with fallback; later releases skip the failed provider',
+            );
         const primaryCalls = calls.filter(url => url.hostname === 'api.guerrillamail.com').length;
         await inbox.resolveDownload(release(4), () => {});
         assert.equal(
@@ -197,6 +247,73 @@ test('cancellation stops without trying fallback', async () => {
         { name: 'AbortError' },
     );
     assert.ok(!calls.some(url => url.hostname === 'api.mail.tm'));
+});
+
+test('reuses authorization already in the browser without contacting either mailbox service', async () => {
+    const { calls, sent, requests } = harness({
+        recognizesCookie: true,
+        existingCookie: 'payments=existing-signature',
+    });
+    const result = await new TemporaryInbox().resolveDownload(release(1), () => {});
+    assert.equal(result.itemId, 1);
+    assert.deepEqual(sent, []);
+    assert.ok(calls.every(url => url.hostname.endsWith('bandcamp.com')));
+    assert.equal(requests[0].cookie, 'payments=existing-signature');
+});
+
+test('requests email when Bandcamp does not recognize the existing cookie for this release', async () => {
+    const { sent, requests } = harness({ existingCookie: 'payments=another-artist-or-expired-token' });
+    assert.equal((await new TemporaryInbox().resolveDownload(release(1), () => {})).itemId, 1);
+    assert.deepEqual(sent, [1]);
+    assert.ok(
+        requests
+            .filter(request => new URL(request.url).hostname === 'api.guerrillamail.com')
+            .every(request => request.cookie === undefined),
+    );
+});
+
+test('fallback mailbox confirmation also authorizes the rest of the artist queue', async () => {
+    const { sent, calls } = harness({ primaryFailure: 'get_email_address', recognizesCookie: true });
+    const inbox = new TemporaryInbox();
+    const results = await Promise.all([1, 2, 3].map(id => inbox.resolveDownload(release(id), () => {})));
+    assert.deepEqual(
+        results.map(result => result.itemId),
+        [1, 2, 3],
+    );
+    assert.deepEqual(sent, [1]);
+    assert.equal(calls.filter(url => url.hostname === 'api.mail.tm' && url.pathname === '/accounts').length, 1);
+});
+
+test('persists email authorization and skips email for concurrent and later releases', async () => {
+    const { calls, sent, requests } = harness({ recognizesCookie: true });
+    const inbox = new TemporaryInbox();
+    const results = await Promise.all([1, 2, 3].map(id => inbox.resolveDownload(release(id), () => {})));
+    assert.deepEqual(
+        results.map(result => result.itemId),
+        [1, 2, 3],
+    );
+    assert.deepEqual(sent, [1], 'only the first release requests an email');
+    assert.equal(document.cookie, 'payments=1%09signed-value%09signature');
+    assert.ok(
+        requests
+            .filter(request => new URL(request.url).hostname === 'api.guerrillamail.com')
+            .every(request => request.cookie === undefined),
+    );
+    const mailboxCalls = calls.filter(url => url.hostname === 'api.guerrillamail.com').length;
+    assert.equal((await new TemporaryInbox().resolveDownload(release(4), () => {})).itemId, 4);
+    assert.equal(calls.filter(url => url.hostname === 'api.guerrillamail.com').length, mailboxCalls);
+    document.cookie = '';
+    assert.equal((await new TemporaryInbox().resolveDownload(release(5), () => {})).itemId, 5);
+    assert.deepEqual(sent, [1, 5], 'expired or removed authorization requests email again');
+});
+
+test('cancellation also stops releases waiting for the artist confirmation', async () => {
+    const cancel = new AbortController();
+    const { calls } = harness({ cancel });
+    const inbox = new TemporaryInbox(cancel.signal);
+    const results = await Promise.allSettled([1, 2, 3].map(id => inbox.resolveDownload(release(id), () => {})));
+    assert.ok(results.every(result => result.status === 'rejected' && result.reason.name === 'AbortError'));
+    assert.equal(calls.filter(url => url.pathname.startsWith('/album/')).length, 1);
 });
 
 test.after(() => {

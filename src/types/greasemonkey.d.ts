@@ -18,6 +18,7 @@ interface GmRequestResponse {
 }
 
 interface GmRequestDetails {
+    cookie?: string;
     data?: string | undefined;
     headers?: Record<string, string> | undefined;
     method: 'GET' | 'POST';
