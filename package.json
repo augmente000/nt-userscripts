@@ -42,8 +42,15 @@
         "rollup": "^4.62.0",
         "zod": "^4.4.3"
     },
+    "devEngines": {
+        "runtime": {
+            "name": "node",
+            "version": "24.x",
+            "onFail": "warn"
+        }
+    },
     "engines": {
         "node": "24.x"
     },
-    "packageManager": "pnpm@11.15.0"
+    "packageManager": "pnpm@12.15.0"
 }
