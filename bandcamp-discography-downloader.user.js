@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bandcamp Collection Downloader
 // @description  Downloads free and purchased Bandcamp releases as zipped FLAC, with a 128 kbps streaming fallback on individual release pages.
-// @version      2026.10.26.1
+// @version      2026.10.27.1
 // @author       
 // @namespace    https://greasyfork.org/en/scripts/587730-bandcamp-collection-downloader
 // @downloadURL  https://update.greasyfork.org/scripts/587730/Bandcamp%20Collection%20Downloader.user.js
@@ -22,6 +22,41 @@
 
 (function () {
     'use strict';
+
+    function isBandcampUrl$1(url) {
+      try {
+        const parsed = new URL(url);
+        return parsed.protocol === 'https:' && (parsed.hostname === 'bandcamp.com' || parsed.hostname.endsWith('.bandcamp.com'));
+      } catch {
+        return false;
+      }
+    }
+
+    /** Bridge the page's cookie jar and the userscript manager's background requests. */
+    function paymentsCookie(url) {
+      if (!isBandcampUrl$1(url)) {
+        return undefined;
+      }
+      return document.cookie?.split(';').map(cookie => cookie.trim()).find(cookie => cookie.startsWith('payments='));
+    }
+    function rememberPaymentsCookie(requestUrl, finalUrl, headers) {
+      if (!isBandcampUrl$1(requestUrl) || !isBandcampUrl$1(finalUrl)) {
+        return;
+      }
+      for (const line of headers.split(/\r?\n/)) {
+        const cookie = /^set-cookie:\s*(payments=[^\r\n]*)$/i.exec(line)?.[1];
+        if (!cookie) {
+          continue;
+        }
+        // Preserve the complete server-signed value and its expiry. Editing or merging
+        // the ID/token pairs invalidates the signature. Never copy unrelated cookies.
+        try {
+          document.cookie = cookie;
+        } catch {
+          console.warn('[Bandcamp Collection Downloader] Could not save download authorization cookie');
+        }
+      }
+    }
 
     const BINARY_CHUNK_SIZE = 8 * 1_048_576;
     const BANDCAMP_THROTTLE_DELAYS = [2_000, 10_000, 30_000, 60_000, 120_000, 300_000];
@@ -74,7 +109,11 @@
         options.signal?.addEventListener('abort', abort, {
           once: true
         });
+        const cookie = paymentsCookie(url);
         handle = GM_xmlhttpRequest({
+          ...(cookie ? {
+            cookie
+          } : {}),
           data: options.data,
           headers: options.headers,
           method: options.method ?? 'GET',
@@ -85,6 +124,7 @@
               rejectOnce(new HttpError(`Request failed (${response.status}) for ${url}`, response.status));
               return;
             }
+            rememberPaymentsCookie(url, response.finalUrl || url, response.responseHeaders);
             if (response.response === null && response.responseText == null) {
               console.warn('[Bandcamp Collection Downloader] Binary response diagnostic', {
                 contentLength: headerValue(response.responseHeaders, 'content-length'),
@@ -583,9 +623,14 @@
       };
     }
     async function fetchRelease(url, signal) {
-      const html = await requestText(url, signal ? {
-        signal
-      } : {});
+      const html = await requestText(url, {
+        headers: {
+          'Cache-Control': 'no-cache'
+        },
+        ...(signal ? {
+          signal
+        } : {})
+      });
       const document = new DOMParser().parseFromString(html, 'text/html');
       return parseReleaseDocument(document, url);
     }
@@ -947,6 +992,7 @@
     /** Provider sessions and polls are shared by all concurrent releases in one queue. */
     class TemporaryInbox {
       providers;
+      authorizations = new Map();
       constructor(signal) {
         this.signal = signal;
         this.providers = [new GuerrillaMailProvider(signal), new MailTmProvider(signal)].map(provider => ({
@@ -954,7 +1000,36 @@
           name: provider.name
         }));
       }
-      async resolveDownload(release, report) {
+      resolveDownload(release, report) {
+        const origin = new URL(release.url).origin;
+        const previous = this.authorizations.get(origin) ?? Promise.resolve();
+        const result = previous.then(async () => {
+          if (this.signal?.aborted) {
+            throw abortError(this.signal);
+          }
+          // The open page (or another worker's fetched page) may predate a manual
+          // download or the first email confirmation in this queue.
+          report('Checking previous download authorization');
+          const fresh = await fetchRelease(release.url, this.signal);
+          const url = fresh.paymentDownloadPage ?? fresh.tralbum.freeDownloadPage;
+          if (url) {
+            report('Resolving authorized download');
+            return fetchCookedDownload(url, this.signal);
+          }
+          return this.resolveWithProviders(fresh, report);
+        });
+        // Only one email confirmation per artist at a time. Waiting releases recheck
+        // Bandcamp after it has set the cookie, rather than each requesting an email.
+        const settled = result.then(() => {}, () => {});
+        this.authorizations.set(origin, settled);
+        void settled.then(() => {
+          if (this.authorizations.get(origin) === settled) {
+            this.authorizations.delete(origin);
+          }
+        });
+        return result;
+      }
+      async resolveWithProviders(release, report) {
         if (this.signal?.aborted) {
           throw abortError(this.signal);
         }
