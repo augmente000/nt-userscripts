@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Release Collection Checker
 // @description  Marks releases on supported music sites that are already present in your personal collection.
-// @version      2026.09.25.3
+// @version      2026.10.28.1
 // @author       
 // @namespace    https://github.com/augmente000/nt-userscripts
 // @downloadURL  https://raw.githubusercontent.com/augmente000/nt-userscripts/dist/release-collection-checker.user.js
@@ -471,8 +471,8 @@
     }
     function findReleases(document) {
       const releases = [];
-      for (const heading of document.querySelectorAll('a[href] > h3')) {
-        const anchor = heading.parentElement;
+      for (const heading of document.querySelectorAll('a[href] h3')) {
+        const anchor = heading.closest('a[href]');
         const card = heading.closest(CARD_SELECTOR);
         if (!(anchor instanceof HTMLAnchorElement) || !card) {
           continue;
@@ -491,6 +491,7 @@
           key: releasePageUrl
         });
       }
+      console.info(`Release Collection Checker: found ${releases.length} release elements on Band.codes.`);
       return releases;
     }
     const bandcodesAdapter = {
