@@ -64,8 +64,8 @@ async function getBandcampUrl(releasePageUrl: string): Promise<string | null> {
 function findReleases(document: Document): SiteRelease[] {
     const releases: SiteRelease[] = [];
 
-    for (const heading of document.querySelectorAll<HTMLElement>('a[href] > h3')) {
-        const anchor = heading.parentElement;
+    for (const heading of document.querySelectorAll<HTMLElement>('a[href] h3')) {
+        const anchor = heading.closest('a[href]');
         const card = heading.closest<HTMLElement>(CARD_SELECTOR);
         if (!(anchor instanceof HTMLAnchorElement) || !card) {
             continue;
@@ -87,6 +87,7 @@ function findReleases(document: Document): SiteRelease[] {
         });
     }
 
+    console.info(`Release Collection Checker: found ${releases.length} release elements on Band.codes.`);
     return releases;
 }
 
