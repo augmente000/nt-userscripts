@@ -1,7 +1,7 @@
 {
     "name": "Bandcamp Collection Downloader",
     "description": "Downloads free and purchased Bandcamp releases as zipped FLAC, with a 128 kbps streaming fallback on individual release pages.",
-    "version": "2026.10.27.1",
+    "version": "2026.11.01.1",
     "author": "",
     "namespace": "https://greasyfork.org/en/scripts/587730-bandcamp-collection-downloader",
     "downloadURL": "https://update.greasyfork.org/scripts/587730/Bandcamp%20Collection%20Downloader.user.js",
