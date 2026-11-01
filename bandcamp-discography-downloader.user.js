@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bandcamp Collection Downloader
 // @description  Downloads free and purchased Bandcamp releases as zipped FLAC, with a 128 kbps streaming fallback on individual release pages.
-// @version      2026.10.27.1
+// @version      2026.11.01.1
 // @author       
 // @namespace    https://greasyfork.org/en/scripts/587730-bandcamp-collection-downloader
 // @downloadURL  https://update.greasyfork.org/scripts/587730/Bandcamp%20Collection%20Downloader.user.js
@@ -1038,10 +1038,14 @@
             continue;
           }
           try {
-            report(`Requesting download email via ${provider.name}`);
+            report('Requesting download email');
+            console.info(`[Bandcamp Collection Downloader] Requesting download email via ${provider.name}`);
             await provider.inbox.requestDownloadEmail(release);
-            report(`Waiting for Bandcamp email via ${provider.name}`);
-            return await provider.inbox.waitForDownload(release);
+            report('Waiting for Bandcamp email');
+            console.info(`[Bandcamp Collection Downloader] Waiting for Bandcamp email via ${provider.name}`);
+            const download = await provider.inbox.waitForDownload(release);
+            console.info(`[Bandcamp Collection Downloader] Resolved download email via ${provider.name}`);
+            return download;
           } catch (error) {
             if (this.signal?.aborted) {
               throw abortError(this.signal);
@@ -1844,13 +1848,6 @@
         } else {
           this.panel.append(this.track, this.notice);
         }
-        const mailCredit = document.createElement('a');
-        mailCredit.href = 'https://mail.tm/';
-        mailCredit.target = '_blank';
-        mailCredit.rel = 'noopener noreferrer';
-        mailCredit.textContent = 'Temporary email fallback by Mail.tm';
-        mailCredit.style.cssText = 'display:block;margin-top:6px;color:#9eafa6;font-size:10px';
-        this.panel.append(mailCredit);
         this.root.append(controls, this.panel);
         shadow.append(style, this.root);
         document.body.append(this.host);
