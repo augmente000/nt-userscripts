@@ -219,10 +219,14 @@ export class TemporaryInbox {
                 continue;
             }
             try {
-                report(`Requesting download email via ${provider.name}`);
+                report('Requesting download email');
+                console.info(`[Bandcamp Collection Downloader] Requesting download email via ${provider.name}`);
                 await provider.inbox.requestDownloadEmail(release);
-                report(`Waiting for Bandcamp email via ${provider.name}`);
-                return await provider.inbox.waitForDownload(release);
+                report('Waiting for Bandcamp email');
+                console.info(`[Bandcamp Collection Downloader] Waiting for Bandcamp email via ${provider.name}`);
+                const download = await provider.inbox.waitForDownload(release);
+                console.info(`[Bandcamp Collection Downloader] Resolved download email via ${provider.name}`);
+                return download;
             } catch (error) {
                 if (this.signal?.aborted) {
                     throw abortError(this.signal);
