@@ -1,5 +1,17 @@
 # Scripts
 
+## Flac Downloader — Unblock
+
+A userscript for `flacdownloader.com` that stops the saved site's WM-Shield anti-adblock checks before they start. It blocks the recurring popup's restoration observer, timer, and focus trap, and prevents the interaction-triggered Google ad loader from starting. A fallback removes recognized closed-shadow popup hosts and releases their scroll/visibility locks.
+
+The hooks target the captured detector's callback signatures and leave ordinary app timers, observers, focus events, and verification widgets working. Tests run the captured detector in a simulated DOM, including its popup recreation and body-hiding behavior. This is verified against the saved November 1, 2026 code; site changes may require updates. Server availability and download verification still apply.
+
+Run its regression tests with:
+
+```sh
+node --test --test-isolation=none tests/flacdownloader-unblock.test.mjs
+```
+
 ## RuTracker New-Team Logchecker
 
 A userscript for RuTracker topic pages that checks EAC, XLD, dBpoweramp, and whippy/whipper CD rip logs with the New-Team logchecker when their spoilers are expanded.

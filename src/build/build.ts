@@ -48,6 +48,8 @@ const MetadataSchema = z
         require: z.array(z.string()).optional(),
         grant: z.array(z.string()).optional(),
         runAt: z.string().optional(),
+        sandbox: z.string().optional(),
+        injectInto: z.string().optional(),
         icon: z.string().optional(),
     })
     .refine(data => (data.match && !data.include) || (!data.match && data.include), {
@@ -162,6 +164,14 @@ function generateUserscriptHeader(metadata: UserscriptMetadata): string {
 
     if (metadata.runAt) {
         lines.push(`@run-at       ${metadata.runAt}`);
+    }
+
+    if (metadata.sandbox) {
+        lines.push(`@sandbox      ${metadata.sandbox}`);
+    }
+
+    if (metadata.injectInto) {
+        lines.push(`@inject-into  ${metadata.injectInto}`);
     }
 
     if (metadata.icon) {

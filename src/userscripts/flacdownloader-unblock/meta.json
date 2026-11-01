@@ -1,0 +1,14 @@
+{
+    "name": "Flac Downloader — Unblock",
+    "description": "Disables Flac Downloader's anti-adblock checks, recurring wall, focus trap, and ad loader.",
+    "version": "2026.11.01.1",
+    "author": "",
+    "namespace": "https://github.com/augmente000/nt-userscripts",
+    "downloadURL": "https://raw.githubusercontent.com/augmente000/nt-userscripts/dist/flacdownloader-unblock.user.js",
+    "updateURL": "https://raw.githubusercontent.com/augmente000/nt-userscripts/dist/flacdownloader-unblock.user.js",
+    "match": ["https://flacdownloader.com/*", "https://www.flacdownloader.com/*"],
+    "grant": ["none"],
+    "runAt": "document-start",
+    "sandbox": "raw",
+    "injectInto": "page"
+}
