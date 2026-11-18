@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bandcamp Collection Downloader
 // @description  Downloads free and purchased Bandcamp releases as zipped FLAC, with a 128 kbps streaming fallback on individual release pages.
-// @version      2026.11.01.1
+// @version      2026.11.18.1
 // @author       
 // @namespace    https://greasyfork.org/en/scripts/587730-bandcamp-collection-downloader
 // @downloadURL  https://update.greasyfork.org/scripts/587730/Bandcamp%20Collection%20Downloader.user.js
@@ -859,6 +859,12 @@
       element.innerHTML = value;
       return element.value;
     }
+    function isBandcampSender(value) {
+      const sender = decodeHtmlText(value).trim();
+      const address = /<([^<>]+)>$/.exec(sender)?.[1] ?? sender;
+      // Download emails also use tagged bounce addresses at email.bandcamp.com.
+      return /^[^\s<>@]+@(?:[a-z0-9-]+\.)*bandcamp\.com$/i.test(address);
+    }
     function downloadLinks(body) {
       const parsed = new DOMParser().parseFromString(body, 'text/html');
       const links = [...parsed.querySelectorAll('a[href]')].map(anchor => anchor.href).filter(url => {
@@ -936,9 +942,8 @@
           if (!id || this.seenMessages.has(id)) {
             continue;
           }
-          const sender = decodeHtmlText(message.sender).toLowerCase();
           const subject = decodeHtmlText(message.subject).toLowerCase();
-          if (!sender.includes('noreply@bandcamp.com') || !subject.includes('download')) {
+          if (!isBandcampSender(message.sender) || !subject.includes('download')) {
             this.seenMessages.add(id);
             continue;
           }
@@ -957,7 +962,8 @@
               console.warn('[Bandcamp Collection Downloader] Ignoring unusable email link', error);
             }
           }
-          if (links.length === 0 || resolvedLink) {
+          // A listed message can have an incomplete body; retry it on later polls.
+          if (resolvedLink) {
             this.seenMessages.add(id);
           }
         }
