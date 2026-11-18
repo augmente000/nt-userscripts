@@ -20,6 +20,7 @@ export default defineConfig({
         es6: true,
         node: true,
     },
+    ignorePatterns: ['tests/fixtures/**/*.js'],
     rules: {
         'prefer-template': 'error',
         'no-inner-declarations': 'warn',

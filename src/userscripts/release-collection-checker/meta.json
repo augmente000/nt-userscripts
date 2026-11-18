@@ -6,18 +6,9 @@
     "namespace": "https://github.com/augmente000/nt-userscripts",
     "downloadURL": "https://raw.githubusercontent.com/augmente000/nt-userscripts/dist/release-collection-checker.user.js",
     "updateURL": "https://raw.githubusercontent.com/augmente000/nt-userscripts/dist/release-collection-checker.user.js",
-    "match": [
-        "https://band.codes/*"
-    ],
-    "connect": [
-        "api.new-team.me"
-    ],
-    "grant": [
-        "GM_getValue",
-        "GM_setValue",
-        "GM_registerMenuCommand",
-        "GM_xmlhttpRequest"
-    ],
+    "match": ["https://band.codes/*"],
+    "connect": ["api.new-team.me"],
+    "grant": ["GM_getValue", "GM_setValue", "GM_registerMenuCommand", "GM_xmlhttpRequest"],
     "runAt": "document-idle",
     "icon": "https://band.codes/favicon.ico"
 }
