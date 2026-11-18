@@ -50,6 +50,9 @@ function harness({
     rejectPrimary,
     malformedPrimary,
     primaryNeverDelivers,
+    primarySender = 'noreply@bandcamp.com',
+    unrelatedSenders = [],
+    emptyBodyReads = 0,
     recognizesCookie = false,
     existingCookie = '',
 } = {}) {
@@ -74,6 +77,7 @@ function harness({
         },
     });
     let address;
+    let bodyReads = 0;
     globalThis.GM_xmlhttpRequest = options => {
         const url = new URL(options.url);
         calls.push(url);
@@ -89,15 +93,26 @@ function harness({
                 body = malformedPrimary ? {} : { email_addr: 'primary@example.org', sid_token: 'session' };
             if (operation === 'check_email')
                 body = {
-                    list: (primaryNeverDelivers ? [] : sent).map(id => ({
-                        mail_id: id,
-                        mail_from: 'noreply@bandcamp.com',
-                        mail_subject: 'Your download',
-                    })),
+                    list: [
+                        ...unrelatedSenders.map((sender, index) => ({
+                            mail_id: `unrelated-${index}`,
+                            mail_from: sender,
+                            mail_subject: 'Your download',
+                        })),
+                        ...(primaryNeverDelivers ? [] : sent).map(id => ({
+                            mail_id: id,
+                            mail_from: primarySender,
+                            mail_subject: 'Your download from attenuation circuit',
+                            mail_size: '0',
+                        })),
+                    ],
                 };
             if (operation === 'fetch_email')
                 body = {
-                    mail_body: `<a href="https://bandcamp.com/download?id=${url.searchParams.get('email_id')}">Download</a>`,
+                    mail_body:
+                        bodyReads++ < emptyBodyReads
+                            ? ''
+                            : `<a href="https://bandcamp.com/download?id=${url.searchParams.get('email_id')}">Download</a>`,
                 };
         } else if (url.hostname === 'api.mail.tm') {
             if (fallbackFailure) status = 503;
@@ -173,6 +188,43 @@ test('primary remains preferred when healthy', async () => {
     const { calls } = harness();
     const result = await new TemporaryInbox().resolveDownload(release(1), () => {});
     assert.equal(result.itemId, 1);
+    assert.ok(!calls.some(url => url.hostname === 'api.mail.tm'));
+});
+
+for (const primarySender of [
+    'bounces+209779-7db5-uygcrwqm=guerrillamailblock.com@email.bandcamp.com',
+    'Bandcamp <BOUNCES+token@EMAIL.BANDCAMP.COM>',
+    'no-reply@bandcamp.com',
+]) {
+    test(`recognizes Bandcamp download mail from ${primarySender}`, async () => {
+        const { calls } = harness({ primarySender });
+        assert.equal((await new TemporaryInbox().resolveDownload(release(1), () => {})).itemId, 1);
+        assert.ok(calls.some(url => url.searchParams.get('f') === 'fetch_email'));
+        assert.ok(!calls.some(url => url.hostname === 'api.mail.tm'));
+    });
+}
+
+test('ignores unrelated senders and lookalike Bandcamp domains', async () => {
+    const { calls } = harness({
+        unrelatedSenders: [
+            'no-reply@guerrillamail.com',
+            'noreply@bandcamp.com.evil.test',
+            'noreply@fakebandcamp.com',
+            'noreply@bandcamp.com@evil.test',
+            'noreply@bandcamp.com <sender@evil.test>',
+        ],
+    });
+    assert.equal((await new TemporaryInbox().resolveDownload(release(1), () => {})).itemId, 1);
+    assert.deepEqual(
+        calls.filter(url => url.searchParams.get('f') === 'fetch_email').map(url => url.searchParams.get('email_id')),
+        ['1'],
+    );
+});
+
+test('retries a Bandcamp message whose body is initially empty', async () => {
+    const { calls } = harness({ emptyBodyReads: 2 });
+    assert.equal((await new TemporaryInbox().resolveDownload(release(1), () => {})).itemId, 1);
+    assert.equal(calls.filter(url => url.searchParams.get('f') === 'fetch_email').length, 3);
     assert.ok(!calls.some(url => url.hostname === 'api.mail.tm'));
 });
 

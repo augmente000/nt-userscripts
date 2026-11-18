@@ -20,6 +20,13 @@ function decodeHtmlText(value: string): string {
     return element.value;
 }
 
+function isBandcampSender(value: string): boolean {
+    const sender = decodeHtmlText(value).trim();
+    const address = /<([^<>]+)>$/.exec(sender)?.[1] ?? sender;
+    // Download emails also use tagged bounce addresses at email.bandcamp.com.
+    return /^[^\s<>@]+@(?:[a-z0-9-]+\.)*bandcamp\.com$/i.test(address);
+}
+
 function downloadLinks(body: string): string[] {
     const parsed = new DOMParser().parseFromString(body, 'text/html');
     const links = [...parsed.querySelectorAll<HTMLAnchorElement>('a[href]')]
@@ -105,9 +112,8 @@ class ProviderInbox {
             if (!id || this.seenMessages.has(id)) {
                 continue;
             }
-            const sender = decodeHtmlText(message.sender).toLowerCase();
             const subject = decodeHtmlText(message.subject).toLowerCase();
-            if (!sender.includes('noreply@bandcamp.com') || !subject.includes('download')) {
+            if (!isBandcampSender(message.sender) || !subject.includes('download')) {
                 this.seenMessages.add(id);
                 continue;
             }
@@ -127,7 +133,8 @@ class ProviderInbox {
                     console.warn('[Bandcamp Collection Downloader] Ignoring unusable email link', error);
                 }
             }
-            if (links.length === 0 || resolvedLink) {
+            // A listed message can have an incomplete body; retry it on later polls.
+            if (resolvedLink) {
                 this.seenMessages.add(id);
             }
         }
